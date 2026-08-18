@@ -34,3 +34,18 @@ export function formatRupiah(n: number): string {
     maximumFractionDigits: 0,
   }).format(n);
 }
+
+/** Dua digit angka bulan "01".."12", dipakai buat dropdown filter/wizard periode. */
+export const BULAN = [
+  "01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12",
+];
+
+export const BULAN_LABEL: Record<string, string> = {
+  "01": "Januari", "02": "Februari", "03": "Maret", "04": "April",
+  "05": "Mei", "06": "Juni", "07": "Juli", "08": "Agustus",
+  "09": "September", "10": "Oktober", "11": "November", "12": "Desember",
+};
+
+export function currentYear(): number {
+  return new Date().getFullYear();
+}

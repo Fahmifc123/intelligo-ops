@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
-import { initials, avatarClass, formatRupiah } from "@/lib/ui";
+import { initials, avatarClass, formatRupiah, BULAN, BULAN_LABEL, currentYear } from "@/lib/ui";
 
 type Trainer = { id: string; nama: string };
 type Kelas = { id: string; nama: string; trainerId: string };
@@ -51,18 +51,6 @@ const STATUS_STYLE: Record<string, string> = {
   lunas: "bg-success/10 text-success",
 };
 
-const BULAN = [
-  "01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12",
-];
-const BULAN_LABEL: Record<string, string> = {
-  "01": "Januari", "02": "Februari", "03": "Maret", "04": "April",
-  "05": "Mei", "06": "Juni", "07": "Juli", "08": "Agustus",
-  "09": "September", "10": "Oktober", "11": "November", "12": "Desember",
-};
-
-function currentYear() {
-  return new Date().getFullYear();
-}
 
 export default function PayslipPage() {
   const [payslips, setPayslips] = useState<Payslip[]>([]);

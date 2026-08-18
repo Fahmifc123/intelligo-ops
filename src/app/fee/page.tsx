@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { initials, avatarClass, formatRupiah } from "@/lib/ui";
+import { initials, avatarClass, formatRupiah, BULAN, BULAN_LABEL, currentYear } from "@/lib/ui";
 
 type FeeRow = {
   trainerId: string;
@@ -25,7 +25,10 @@ export default function FeePage() {
   const [sesiList, setSesiList] = useState<Sesi[]>([]);
   const [trainers, setTrainers] = useState<Trainer[]>([]);
   const [kelasList, setKelasList] = useState<Kelas[]>([]);
-  const [periode, setPeriode] = useState("");
+  // Filter periode lewat 2 dropdown (bulan + tahun) - bulanFilter "all"
+  // berarti semua bulan, tahunFilter diabaikan kalau bulan "all".
+  const [bulanFilter, setBulanFilter] = useState("all");
+  const [tahunFilter, setTahunFilter] = useState(String(currentYear()));
   const [appliedPeriode, setAppliedPeriode] = useState("");
   const [trainerFilter, setTrainerFilter] = useState("all");
   const [kelasFilter, setKelasFilter] = useState("all");
@@ -54,10 +57,13 @@ export default function FeePage() {
     load();
   }, []);
 
-  function applyFilters(p: string, trainerId: string, kelasId: string) {
+  function applyFilters(bulan: string, tahun: string, trainerId: string, kelasId: string) {
+    setBulanFilter(bulan);
+    setTahunFilter(tahun);
     setTrainerFilter(trainerId);
     setKelasFilter(kelasId);
-    load(p || undefined, trainerId, kelasId);
+    const p = bulan === "all" ? undefined : `${tahun}-${bulan}`;
+    load(p, trainerId, kelasId);
   }
 
   const total = rows.reduce((sum, r) => sum + r.totalFee, 0);
@@ -127,9 +133,45 @@ export default function FeePage() {
         </div>
       </div>
 
-      {/* Filter trainer & kelas - mempengaruhi summary card + tabel bareng */}
-      <div className="flex flex-col gap-stack-md rounded-xl border border-outline-variant bg-surface-container-lowest p-4 sm:flex-row sm:items-center">
-        <div className="flex flex-1 flex-col gap-1.5">
+      {/* Filter bulan, tahun, trainer & kelas - mempengaruhi summary card + tabel bareng */}
+      <div className="flex flex-col gap-stack-md rounded-xl border border-outline-variant bg-surface-container-lowest p-4 sm:flex-row sm:items-end sm:flex-wrap">
+        <div className="flex flex-1 flex-col gap-1.5 sm:min-w-[140px]">
+          <label htmlFor="filter-bulan" className="font-geist text-label-sm text-text-muted">
+            Bulan
+          </label>
+          <select
+            id="filter-bulan"
+            className={inputClass}
+            value={bulanFilter}
+            onChange={(e) => applyFilters(e.target.value, tahunFilter, trainerFilter, kelasFilter)}
+          >
+            <option value="all">Semua Bulan</option>
+            {BULAN.map((b) => (
+              <option key={b} value={b}>
+                {BULAN_LABEL[b]}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="flex flex-1 flex-col gap-1.5 sm:min-w-[110px]">
+          <label htmlFor="filter-tahun" className="font-geist text-label-sm text-text-muted">
+            Tahun
+          </label>
+          <select
+            id="filter-tahun"
+            className={inputClass}
+            disabled={bulanFilter === "all"}
+            value={tahunFilter}
+            onChange={(e) => applyFilters(bulanFilter, e.target.value, trainerFilter, kelasFilter)}
+          >
+            {[currentYear() - 1, currentYear(), currentYear() + 1].map((y) => (
+              <option key={y} value={y}>
+                {y}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="flex flex-1 flex-col gap-1.5 sm:min-w-[160px]">
           <label htmlFor="filter-trainer" className="font-geist text-label-sm text-text-muted">
             Trainer
           </label>
@@ -146,7 +188,7 @@ export default function FeePage() {
                 kelasList.find((k) => k.id === kelasFilter)?.trainerId === newTrainerId ||
                 newTrainerId === "all";
               const newKelasFilter = stillValid ? kelasFilter : "all";
-              applyFilters(periode, newTrainerId, newKelasFilter);
+              applyFilters(bulanFilter, tahunFilter, newTrainerId, newKelasFilter);
             }}
           >
             <option value="all">Semua Trainer</option>
@@ -157,7 +199,7 @@ export default function FeePage() {
             ))}
           </select>
         </div>
-        <div className="flex flex-1 flex-col gap-1.5">
+        <div className="flex flex-1 flex-col gap-1.5 sm:min-w-[160px]">
           <label htmlFor="filter-kelas" className="font-geist text-label-sm text-text-muted">
             Kelas
           </label>
@@ -165,7 +207,7 @@ export default function FeePage() {
             id="filter-kelas"
             className={inputClass}
             value={kelasFilter}
-            onChange={(e) => applyFilters(periode, trainerFilter, e.target.value)}
+            onChange={(e) => applyFilters(bulanFilter, tahunFilter, trainerFilter, e.target.value)}
           >
             <option value="all">Semua Kelas</option>
             {kelasUntukDropdown.map((k) => (
@@ -175,10 +217,10 @@ export default function FeePage() {
             ))}
           </select>
         </div>
-        {(trainerFilter !== "all" || kelasFilter !== "all") && (
+        {(bulanFilter !== "all" || trainerFilter !== "all" || kelasFilter !== "all") && (
           <button
-            onClick={() => applyFilters(periode, "all", "all")}
-            className="self-start rounded-lg px-3 py-2 font-geist text-label-sm text-text-muted underline underline-offset-4 hover:text-primary sm:self-end"
+            onClick={() => applyFilters("all", String(currentYear()), "all", "all")}
+            className="rounded-lg px-3 py-2 font-geist text-label-sm text-text-muted underline underline-offset-4 hover:text-primary"
           >
             Reset filter
           </button>
@@ -250,35 +292,11 @@ export default function FeePage() {
       <div className="flex flex-col overflow-hidden rounded-xl border border-outline-variant bg-surface-container-lowest shadow-sm">
         <div className="flex flex-col items-start justify-between gap-3 border-b border-outline-variant bg-surface-container-low px-6 py-4 sm:flex-row sm:items-center">
           <h2 className="font-geist text-headline-sm text-primary">Detail Fee per Trainer</h2>
-          <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
-            <label htmlFor="fee-periode" className="font-geist text-label-sm text-text-muted">
-              Periode:
-            </label>
-            <input
-              id="fee-periode"
-              className={`${inputClass} w-32`}
-              placeholder="2026-08"
-              value={periode}
-              onChange={(e) => setPeriode(e.target.value)}
-            />
-            <button
-              onClick={() => applyFilters(periode, trainerFilter, kelasFilter)}
-              className="rounded-lg bg-primary px-4 py-2 font-geist text-label-sm text-on-primary transition-colors hover:bg-primary-container"
-            >
-              Terapkan
-            </button>
-            {appliedPeriode && (
-              <button
-                onClick={() => {
-                  setPeriode("");
-                  applyFilters("", trainerFilter, kelasFilter);
-                }}
-                className="rounded-lg px-2 py-2 font-geist text-label-sm text-text-muted underline underline-offset-4 hover:text-primary"
-              >
-                Reset
-              </button>
-            )}
-          </div>
+          <span className="font-inter text-body-sm text-text-muted">
+            {appliedPeriode
+              ? `Periode ${BULAN_LABEL[appliedPeriode.split("-")[1]]} ${appliedPeriode.split("-")[0]}`
+              : "Semua periode"}
+          </span>
         </div>
 
         <div className="w-full overflow-x-auto">
