@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+
+<html lang="id"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Rekap Fee - Intelligo Ops</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&amp;family=Inter:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+          darkMode: "class",
+          theme: {
+            extend: {
+              "colors": {
+                      "surface-variant": "#e2e2e4",
+                      "success": "#10B981",
+                      "background": "#faf9fb",
+                      "on-secondary-fixed-variant": "#802a00",
+                      "on-primary-container": "#7195ac",
+                      "surface": "#faf9fb",
+                      "primary-fixed-dim": "#a7cbe4",
+                      "warning": "#F59E0B",
+                      "primary-container": "#002d40",
+                      "secondary": "#a33800",
+                      "tertiary-fixed": "#ffdcc7",
+                      "primary": "#001723",
+                      "surface-dim": "#dadadb",
+                      "error-container": "#ffdad6",
+                      "on-surface": "#1a1c1d",
+                      "on-error-container": "#93000a",
+                      "on-tertiary-fixed": "#311300",
+                      "on-background": "#1a1c1d",
+                      "on-primary": "#ffffff",
+                      "on-secondary-container": "#fffbff",
+                      "neutral-light-bg": "#F8FAFC",
+                      "on-secondary": "#ffffff",
+                      "on-tertiary-container": "#b88665",
+                      "outline-variant": "#c2c7cc",
+                      "neutral-dark-bg": "#001B26",
+                      "secondary-fixed": "#ffdbce",
+                      "on-error": "#ffffff",
+                      "on-primary-fixed-variant": "#264b5f",
+                      "surface-container": "#eeeeef",
+                      "text-main": "#0F172A",
+                      "secondary-container": "#cd4800",
+                      "inverse-primary": "#a7cbe4",
+                      "surface-bright": "#faf9fb",
+                      "surface-tint": "#3f6378",
+                      "secondary-fixed-dim": "#ffb59a",
+                      "error": "#ba1a1a",
+                      "tertiary-fixed-dim": "#f3ba97",
+                      "on-secondary-fixed": "#370e00",
+                      "text-muted": "#64748B",
+                      "tertiary-container": "#422108",
+                      "primary-fixed": "#c4e7ff",
+                      "inverse-surface": "#2f3132",
+                      "tertiary": "#270e00",
+                      "inverse-on-surface": "#f1f0f2",
+                      "surface-container-highest": "#e2e2e4",
+                      "on-surface-variant": "#42484c",
+                      "on-tertiary": "#ffffff",
+                      "on-primary-fixed": "#001e2c",
+                      "outline": "#72787d",
+                      "on-tertiary-fixed-variant": "#653d22",
+                      "surface-container-lowest": "#ffffff",
+                      "surface-container-low": "#f4f3f5",
+                      "surface-container-high": "#e8e8ea"
+              },
+              "borderRadius": {
+                      "DEFAULT": "0.25rem",
+                      "lg": "0.5rem",
+                      "xl": "0.75rem",
+                      "full": "9999px"
+              },
+              "spacing": {
+                      "stack-sm": "0.5rem",
+                      "container-max": "1280px",
+                      "margin-mobile": "1rem",
+                      "stack-md": "1rem",
+                      "gutter": "1.5rem",
+                      "stack-lg": "1.5rem"
+              },
+              "fontFamily": {
+                      "headline-xl": ["Geist"],
+                      "label-sm": ["Geist"],
+                      "headline-lg": ["Geist"],
+                      "body-lg": ["Inter"],
+                      "headline-md": ["Geist"],
+                      "headline-lg-mobile": ["Geist"],
+                      "body-md": ["Inter"],
+                      "body-sm": ["Inter"],
+                      "label-md": ["Geist"],
+                      "headline-sm": ["Geist"]
+              },
+              "fontSize": {
+                      "headline-xl": ["40px", {"lineHeight": "48px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                      "label-sm": ["12px", {"lineHeight": "14px", "fontWeight": "500"}],
+                      "headline-lg": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.01em", "fontWeight": "600"}],
+                      "body-lg": ["18px", {"lineHeight": "28px", "fontWeight": "400"}],
+                      "headline-md": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+                      "headline-lg-mobile": ["28px", {"lineHeight": "36px", "fontWeight": "600"}],
+                      "body-md": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                      "body-sm": ["14px", {"lineHeight": "20px", "fontWeight": "400"}],
+                      "label-md": ["14px", {"lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "600"}],
+                      "headline-sm": ["20px", {"lineHeight": "28px", "fontWeight": "600"}]
+              }
+            }
+          }
+        }
+    </script>
+<style>
+        body { font-family: 'Inter', sans-serif; background-color: #F8FAFC; }
+        h1, h2, h3, h4, h5, h6, .font-geist { font-family: 'Geist', sans-serif; }
+    </style>
+</head>
+<body class="bg-neutral-light-bg text-on-surface min-h-screen flex flex-col">
+<!-- TopNavBar -->
+<nav class="bg-surface/80 dark:bg-surface-dim/80 backdrop-blur-md docked full-width top-0 sticky z-50 border-b border-outline-variant/30 dark:border-outline/20 flat no shadows transition-all duration-200 ease-in-out">
+<div class="flex justify-between items-center h-16 w-full px-margin-mobile md:px-8 max-w-container-max mx-auto">
+<div class="flex items-center gap-6">
+<a class="font-headline-md text-headline-md font-bold text-primary dark:text-primary-fixed mr-4" href="#">
+                    Intelligo Ops
+                </a>
+<!-- Desktop Navigation -->
+<div class="hidden md:flex gap-6 items-center">
+<a class="text-on-surface-variant dark:text-surface-variant hover:text-primary dark:hover:text-primary-fixed-dim transition-colors font-headline-sm text-headline-sm md:font-label-md md:text-label-md hover:bg-surface-container-high/50 dark:hover:bg-surface-container-highest/10 rounded-lg px-2 py-1" href="#">Home</a>
+<a class="text-on-surface-variant dark:text-surface-variant hover:text-primary dark:hover:text-primary-fixed-dim transition-colors font-headline-sm text-headline-sm md:font-label-md md:text-label-md hover:bg-surface-container-high/50 dark:hover:bg-surface-container-highest/10 rounded-lg px-2 py-1" href="#">Trainer</a>
+<a class="text-on-surface-variant dark:text-surface-variant hover:text-primary dark:hover:text-primary-fixed-dim transition-colors font-headline-sm text-headline-sm md:font-label-md md:text-label-md hover:bg-surface-container-high/50 dark:hover:bg-surface-container-highest/10 rounded-lg px-2 py-1" href="#">Kelas</a>
+<a class="text-on-surface-variant dark:text-surface-variant hover:text-primary dark:hover:text-primary-fixed-dim transition-colors font-headline-sm text-headline-sm md:font-label-md md:text-label-md hover:bg-surface-container-high/50 dark:hover:bg-surface-container-highest/10 rounded-lg px-2 py-1" href="#">Sesi</a>
+<a class="text-secondary dark:text-secondary-fixed border-b-2 border-secondary dark:border-secondary-fixed pb-1 font-bold font-headline-sm text-headline-sm md:font-label-md md:text-label-md px-2 py-1" href="#">Rekap Fee</a>
+</div>
+</div>
+<!-- Actions -->
+<div class="flex items-center gap-4">
+<div class="hidden md:flex items-center gap-2 text-on-surface-variant">
+<button class="p-2 hover:bg-surface-container-high/50 rounded-full transition-colors">
+<span class="material-symbols-outlined">notifications</span>
+</button>
+<button class="p-2 hover:bg-surface-container-high/50 rounded-full transition-colors">
+<span class="material-symbols-outlined">settings</span>
+</button>
+</div>
+<img alt="User profile" class="w-8 h-8 rounded-full border border-outline-variant" data-alt="A small circular avatar placeholder image showing a generic user face for the top navigation bar." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDoEJArUwpfMjRS7Y4eYJ2RyIx32wHw6Pt-eDFYYEq-Y87v0mArUwsHgIICKaWj7uCo7KeLhz8F_EVi6v233RXaRjxKnHiDDlOQGLbkRj0jbqNjWR0Jg-xMpUFns929KygmG00Pr8shH3YxZAPvQQtDk7b5IbqnOXDpNpNbHec16FTuwO7tgdYKdPriK37fQvgZLbH00crS2Isq25KX5nQhIn5TUzVOMkoC5hRJUBOKjMrzzw3acC_p"/>
+</div>
+</div>
+</nav>
+<!-- Main Content -->
+<main class="flex-grow w-full max-w-container-max mx-auto px-margin-mobile md:px-8 py-stack-lg flex flex-col gap-stack-lg">
+<!-- Header Section -->
+<div class="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
+<div>
+<h1 class="font-headline-lg text-headline-lg text-primary mb-2">Rekap Fee Trainer</h1>
+<p class="font-body-md text-body-md text-text-muted">Ringkasan pembayaran fee untuk semua trainer periode berjalan.</p>
+</div>
+<div class="flex gap-4 w-full md:w-auto">
+<div class="relative w-full md:w-64">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline">search</span>
+<input class="w-full pl-10 pr-4 py-2 border border-outline-variant rounded-lg bg-surface focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent font-body-sm text-body-sm" placeholder="Cari nama trainer..." type="text"/>
+</div>
+<button class="bg-primary text-on-primary font-label-md text-label-md px-6 py-2 rounded-lg hover:bg-primary-container hover:text-on-primary-container transition-colors shadow-sm flex items-center gap-2 whitespace-nowrap">
+<span class="material-symbols-outlined text-[18px]">download</span>
+                    Export CSV
+                </button>
+</div>
+</div>
+<!-- Summary Cards (Bento style) -->
+<div class="grid grid-cols-1 md:grid-cols-3 gap-stack-md">
+<!-- Total Fee -->
+<div class="bg-surface border border-outline-variant rounded-xl p-6 hover:shadow-md transition-shadow">
+<div class="flex items-center gap-3 mb-4">
+<div class="w-10 h-10 rounded-full bg-secondary-container/10 flex items-center justify-center">
+<span class="material-symbols-outlined text-secondary">account_balance_wallet</span>
+</div>
+<h3 class="font-label-md text-label-md text-text-muted">Total Estimasi Fee</h3>
+</div>
+<div class="font-headline-lg text-headline-lg text-primary">Rp 45.500.000</div>
+<div class="mt-2 text-sm flex items-center gap-1 text-success">
+<span class="material-symbols-outlined text-[16px]">trending_up</span>
+<span>+12% dari bulan lalu</span>
+</div>
+</div>
+<!-- Total Sesi -->
+<div class="bg-surface border border-outline-variant rounded-xl p-6 hover:shadow-md transition-shadow">
+<div class="flex items-center gap-3 mb-4">
+<div class="w-10 h-10 rounded-full bg-primary-container/10 flex items-center justify-center">
+<span class="material-symbols-outlined text-primary-fixed-dim">event_available</span>
+</div>
+<h3 class="font-label-md text-label-md text-text-muted">Total Sesi Selesai</h3>
+</div>
+<div class="font-headline-lg text-headline-lg text-primary">342</div>
+<div class="mt-2 text-sm text-text-muted">Sesi telah dikonfirmasi</div>
+</div>
+<!-- Pending Review -->
+<div class="bg-surface border border-outline-variant rounded-xl p-6 hover:shadow-md transition-shadow">
+<div class="flex items-center gap-3 mb-4">
+<div class="w-10 h-10 rounded-full bg-warning/10 flex items-center justify-center">
+<span class="material-symbols-outlined text-warning">pending_actions</span>
+</div>
+<h3 class="font-label-md text-label-md text-text-muted">Sesi Menunggu Review</h3>
+</div>
+<div class="font-headline-lg text-headline-lg text-primary">18</div>
+<div class="mt-2 text-sm text-warning font-medium">Perlu tindakan segera</div>
+</div>
+</div>
+<!-- Data Table Section -->
+<div class="bg-surface border border-outline-variant rounded-xl overflow-hidden shadow-sm flex flex-col">
+<div class="px-6 py-4 border-b border-outline-variant bg-surface-container-low flex justify-between items-center">
+<h2 class="font-headline-sm text-headline-sm text-primary">Detail Fee per Trainer</h2>
+<div class="flex items-center gap-2">
+<span class="font-label-sm text-label-sm text-text-muted">Periode:</span>
+<select class="border-none bg-transparent font-label-md text-label-md text-primary cursor-pointer focus:ring-0 p-0 pr-4">
+<option>Agustus 2024</option>
+<option>Juli 2024</option>
+<option>Juni 2024</option>
+</select>
+</div>
+</div>
+<div class="overflow-x-auto w-full">
+<table class="w-full text-left border-collapse">
+<thead>
+<tr class="bg-surface-container-low/50 font-label-md text-label-md text-text-muted border-b border-outline-variant">
+<th class="p-4 pl-6">Nama Trainer</th>
+<th class="p-4">Total Sesi</th>
+<th class="p-4">Rate Rata-rata</th>
+<th class="p-4">Total Fee</th>
+<th class="p-4">Status</th>
+<th class="p-4 pr-6 text-right">Aksi</th>
+</tr>
+</thead>
+<tbody class="font-body-sm text-body-sm">
+<!-- Row 1 -->
+<tr class="border-b border-outline-variant/50 hover:bg-neutral-light-bg transition-colors">
+<td class="p-4 pl-6">
+<div class="flex items-center gap-3">
+<div class="w-8 h-8 rounded-full bg-primary-container text-on-primary-container flex items-center justify-center font-bold text-xs">
+                                        AN
+                                    </div>
+<div class="font-medium text-primary">Ahmad Nurudin</div>
+</div>
+</td>
+<td class="p-4">24 Sesi</td>
+<td class="p-4">Rp 150.000</td>
+<td class="p-4 font-bold text-primary">Rp 3.600.000</td>
+<td class="p-4">
+<span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-success/10 text-success">
+                                    Siap Bayar
+                                </span>
+</td>
+<td class="p-4 pr-6 text-right">
+<button class="text-text-muted hover:text-primary transition-colors">
+<span class="material-symbols-outlined text-[20px]">visibility</span>
+</button>
+</td>
+</tr>
+<!-- Row 2 -->
+<tr class="border-b border-outline-variant/50 hover:bg-neutral-light-bg transition-colors">
+<td class="p-4 pl-6">
+<div class="flex items-center gap-3">
+<div class="w-8 h-8 rounded-full bg-secondary-container text-on-secondary-container flex items-center justify-center font-bold text-xs">
+                                        BS
+                                    </div>
+<div class="font-medium text-primary">Budi Santoso</div>
+</div>
+</td>
+<td class="p-4">18 Sesi</td>
+<td class="p-4">Rp 200.000</td>
+<td class="p-4 font-bold text-primary">Rp 3.600.000</td>
+<td class="p-4">
+<span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-warning/10 text-warning">
+                                    Review (2 Sesi)
+                                </span>
+</td>
+<td class="p-4 pr-6 text-right">
+<button class="text-text-muted hover:text-primary transition-colors">
+<span class="material-symbols-outlined text-[20px]">visibility</span>
+</button>
+</td>
+</tr>
+<!-- Row 3 -->
+<tr class="border-b border-outline-variant/50 hover:bg-neutral-light-bg transition-colors">
+<td class="p-4 pl-6">
+<div class="flex items-center gap-3">
+<div class="w-8 h-8 rounded-full bg-tertiary-container text-on-tertiary-container flex items-center justify-center font-bold text-xs">
+                                        CW
+                                    </div>
+<div class="font-medium text-primary">Citra Wijaya</div>
+</div>
+</td>
+<td class="p-4">32 Sesi</td>
+<td class="p-4">Rp 150.000</td>
+<td class="p-4 font-bold text-primary">Rp 4.800.000</td>
+<td class="p-4">
+<span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-success/10 text-success">
+                                    Siap Bayar
+                                </span>
+</td>
+<td class="p-4 pr-6 text-right">
+<button class="text-text-muted hover:text-primary transition-colors">
+<span class="material-symbols-outlined text-[20px]">visibility</span>
+</button>
+</td>
+</tr>
+<!-- Row 4 -->
+<tr class="hover:bg-neutral-light-bg transition-colors">
+<td class="p-4 pl-6">
+<div class="flex items-center gap-3">
+<div class="w-8 h-8 rounded-full bg-primary-container text-on-primary-container flex items-center justify-center font-bold text-xs">
+                                        DR
+                                    </div>
+<div class="font-medium text-primary">Dian Rosdiana</div>
+</div>
+</td>
+<td class="p-4">10 Sesi</td>
+<td class="p-4">Rp 250.000</td>
+<td class="p-4 font-bold text-primary">Rp 2.500.000</td>
+<td class="p-4">
+<span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-success/10 text-success">
+                                    Siap Bayar
+                                </span>
+</td>
+<td class="p-4 pr-6 text-right">
+<button class="text-text-muted hover:text-primary transition-colors">
+<span class="material-symbols-outlined text-[20px]">visibility</span>
+</button>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="px-6 py-4 border-t border-outline-variant bg-surface-container-lowest flex justify-between items-center text-sm">
+<span class="text-text-muted">Menampilkan 1-4 dari 24 trainer</span>
+<div class="flex gap-1">
+<button class="p-1 rounded text-text-muted hover:bg-surface-variant transition-colors disabled:opacity-50"><span class="material-symbols-outlined">chevron_left</span></button>
+<button class="p-1 rounded text-text-muted hover:bg-surface-variant transition-colors"><span class="material-symbols-outlined">chevron_right</span></button>
+</div>
+</div>
+</div>
+</main>
+<!-- Footer -->
+<footer class="bg-surface-container-low dark:bg-neutral-dark-bg full-width mt-auto border-t border-outline-variant/20 dark:border-outline/10 flat no shadows transition-opacity duration-200 hover:opacity-80">
+<div class="w-full py-8 px-margin-mobile md:px-8 max-w-container-max mx-auto flex flex-col md:flex-row justify-between items-center gap-stack-md">
+<div class="font-label-md text-label-md font-bold text-primary dark:text-primary-fixed">
+                © 2024 Intelligo Ops. All rights reserved.
+            </div>
+<div class="flex gap-6">
+<a class="font-body-sm text-body-sm text-text-muted dark:text-surface-variant hover:text-secondary dark:hover:text-secondary-fixed hover:underline underline-offset-4" href="#">Privacy Policy</a>
+<a class="font-body-sm text-body-sm text-text-muted dark:text-surface-variant hover:text-secondary dark:hover:text-secondary-fixed hover:underline underline-offset-4" href="#">Terms of Service</a>
+<a class="font-body-sm text-body-sm text-text-muted dark:text-surface-variant hover:text-secondary dark:hover:text-secondary-fixed hover:underline underline-offset-4" href="#">Support</a>
+</div>
+</div>
+</footer>
+</body></html>

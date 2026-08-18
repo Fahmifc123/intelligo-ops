@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Intelligo Ops - Trainer Management</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&amp;family=Inter:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+          darkMode: "class",
+          theme: {
+            extend: {
+              "colors": {
+                      "surface-variant": "#e2e2e4",
+                      "success": "#10B981",
+                      "background": "#faf9fb",
+                      "on-secondary-fixed-variant": "#802a00",
+                      "on-primary-container": "#7195ac",
+                      "surface": "#faf9fb",
+                      "primary-fixed-dim": "#a7cbe4",
+                      "warning": "#F59E0B",
+                      "primary-container": "#002d40",
+                      "secondary": "#a33800",
+                      "tertiary-fixed": "#ffdcc7",
+                      "primary": "#001723",
+                      "surface-dim": "#dadadb",
+                      "error-container": "#ffdad6",
+                      "on-surface": "#1a1c1d",
+                      "on-error-container": "#93000a",
+                      "on-tertiary-fixed": "#311300",
+                      "on-background": "#1a1c1d",
+                      "on-primary": "#ffffff",
+                      "on-secondary-container": "#fffbff",
+                      "neutral-light-bg": "#F8FAFC",
+                      "on-secondary": "#ffffff",
+                      "on-tertiary-container": "#b88665",
+                      "outline-variant": "#c2c7cc",
+                      "neutral-dark-bg": "#001B26",
+                      "secondary-fixed": "#ffdbce",
+                      "on-error": "#ffffff",
+                      "on-primary-fixed-variant": "#264b5f",
+                      "surface-container": "#eeeeef",
+                      "text-main": "#0F172A",
+                      "secondary-container": "#cd4800",
+                      "inverse-primary": "#a7cbe4",
+                      "surface-bright": "#faf9fb",
+                      "surface-tint": "#3f6378",
+                      "secondary-fixed-dim": "#ffb59a",
+                      "error": "#ba1a1a",
+                      "tertiary-fixed-dim": "#f3ba97",
+                      "on-secondary-fixed": "#370e00",
+                      "text-muted": "#64748B",
+                      "tertiary-container": "#422108",
+                      "primary-fixed": "#c4e7ff",
+                      "inverse-surface": "#2f3132",
+                      "tertiary": "#270e00",
+                      "inverse-on-surface": "#f1f0f2",
+                      "surface-container-highest": "#e2e2e4",
+                      "on-surface-variant": "#42484c",
+                      "on-tertiary": "#ffffff",
+                      "on-primary-fixed": "#001e2c",
+                      "outline": "#72787d",
+                      "on-tertiary-fixed-variant": "#653d22",
+                      "surface-container-lowest": "#ffffff",
+                      "surface-container-low": "#f4f3f5",
+                      "surface-container-high": "#e8e8ea"
+              },
+              "borderRadius": {
+                      "DEFAULT": "0.25rem",
+                      "lg": "0.5rem",
+                      "xl": "0.75rem",
+                      "full": "9999px"
+              },
+              "spacing": {
+                      "stack-sm": "0.5rem",
+                      "container-max": "1280px",
+                      "margin-mobile": "1rem",
+                      "stack-md": "1rem",
+                      "gutter": "1.5rem",
+                      "stack-lg": "1.5rem"
+              },
+              "fontFamily": {
+                      "headline-xl": [
+                              "Geist"
+                      ],
+                      "label-sm": [
+                              "Geist"
+                      ],
+                      "headline-lg": [
+                              "Geist"
+                      ],
+                      "body-lg": [
+                              "Inter"
+                      ],
+                      "headline-md": [
+                              "Geist"
+                      ],
+                      "headline-lg-mobile": [
+                              "Geist"
+                      ],
+                      "body-md": [
+                              "Inter"
+                      ],
+                      "body-sm": [
+                              "Inter"
+                      ],
+                      "label-md": [
+                              "Geist"
+                      ],
+                      "headline-sm": [
+                              "Geist"
+                      ]
+              },
+              "fontSize": {
+                      "headline-xl": [
+                              "40px",
+                              {
+                                      "lineHeight": "48px",
+                                      "letterSpacing": "-0.02em",
+                                      "fontWeight": "700"
+                              }
+                      ],
+                      "label-sm": [
+                              "12px",
+                              {
+                                      "lineHeight": "14px",
+                                      "fontWeight": "500"
+                              }
+                      ],
+                      "headline-lg": [
+                              "32px",
+                              {
+                                      "lineHeight": "40px",
+                                      "letterSpacing": "-0.01em",
+                                      "fontWeight": "600"
+                              }
+                      ],
+                      "body-lg": [
+                              "18px",
+                              {
+                                      "lineHeight": "28px",
+                                      "fontWeight": "400"
+                              }
+                      ],
+                      "headline-md": [
+                              "24px",
+                              {
+                                      "lineHeight": "32px",
+                                      "fontWeight": "600"
+                              }
+                      ],
+                      "headline-lg-mobile": [
+                              "28px",
+                              {
+                                      "lineHeight": "36px",
+                                      "fontWeight": "600"
+                              }
+                      ],
+                      "body-md": [
+                              "16px",
+                              {
+                                      "lineHeight": "24px",
+                                      "fontWeight": "400"
+                              }
+                      ],
+                      "body-sm": [
+                              "14px",
+                              {
+                                      "lineHeight": "20px",
+                                      "fontWeight": "400"
+                              }
+                      ],
+                      "label-md": [
+                              "14px",
+                              {
+                                      "lineHeight": "16px",
+                                      "letterSpacing": "0.05em",
+                                      "fontWeight": "600"
+                              }
+                      ],
+                      "headline-sm": [
+                              "20px",
+                              {
+                                      "lineHeight": "28px",
+                                      "fontWeight": "600"
+                              }
+                      ]
+              }
+      },
+          },
+        }
+      </script>
+<style>
+        body {
+            background-color: #F8FAFC; /* neutral-light-bg */
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col font-body-md text-body-md text-on-surface">
+<!-- TopNavBar -->
+<header class="bg-surface/80 dark:bg-surface-dim/80 backdrop-blur-md text-primary dark:text-primary-fixed-dim font-headline-sm text-headline-sm md:font-label-md md:text-label-md docked full-width top-0 sticky z-50 border-b border-outline-variant/30 dark:border-outline/20">
+<div class="flex justify-between items-center h-16 w-full px-margin-mobile md:px-8 max-w-container-max mx-auto">
+<div class="flex items-center gap-6">
+<span class="font-headline-md text-headline-md font-bold text-primary dark:text-primary-fixed">Intelligo Ops</span>
+<nav class="hidden md:flex gap-4">
+<a class="text-on-surface-variant dark:text-surface-variant hover:text-primary dark:hover:text-primary-fixed-dim transition-colors hover:bg-surface-container-high/50 dark:hover:bg-surface-container-highest/10 rounded-lg px-3 py-2 transition-all duration-200 ease-in-out active:scale-95" href="#">Home</a>
+<a class="text-secondary dark:text-secondary-fixed border-b-2 border-secondary dark:border-secondary-fixed pb-1 font-bold hover:bg-surface-container-high/50 dark:hover:bg-surface-container-highest/10 rounded-lg px-3 py-2 transition-all duration-200 ease-in-out active:scale-95" href="#">Trainer</a>
+<a class="text-on-surface-variant dark:text-surface-variant hover:text-primary dark:hover:text-primary-fixed-dim transition-colors hover:bg-surface-container-high/50 dark:hover:bg-surface-container-highest/10 rounded-lg px-3 py-2 transition-all duration-200 ease-in-out active:scale-95" href="#">Kelas</a>
+<a class="text-on-surface-variant dark:text-surface-variant hover:text-primary dark:hover:text-primary-fixed-dim transition-colors hover:bg-surface-container-high/50 dark:hover:bg-surface-container-highest/10 rounded-lg px-3 py-2 transition-all duration-200 ease-in-out active:scale-95" href="#">Sesi</a>
+<a class="text-on-surface-variant dark:text-surface-variant hover:text-primary dark:hover:text-primary-fixed-dim transition-colors hover:bg-surface-container-high/50 dark:hover:bg-surface-container-highest/10 rounded-lg px-3 py-2 transition-all duration-200 ease-in-out active:scale-95" href="#">Rekap Fee</a>
+</nav>
+</div>
+<div class="flex items-center gap-4">
+<button class="p-2 rounded-full hover:bg-surface-container-high/50 transition-colors">
+<span class="material-symbols-outlined">notifications</span>
+</button>
+<button class="p-2 rounded-full hover:bg-surface-container-high/50 transition-colors">
+<span class="material-symbols-outlined">settings</span>
+</button>
+<img alt="User profile" class="w-8 h-8 rounded-full object-cover border border-outline-variant" data-alt="A small circular user profile picture showing a professional headshot in a modern office setting." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAUZGvFYOZwFDdHLxEQmsiIlZnHEf12aH2Cfmvu_2gtEkSBFD3vzgX_qoKyPi1W1gjSY8QqjPBUlXuVrzAOHRrPPaGjKeF_JzrWMEgcUqdTPXpv9pDa-qeOmDe96h59akYUuHkdRwSFdKPNR76EbIphMWR4rKtk6osC9EdpCdx5Akp9Y3c2vvyG2Fgg4OhmyJSBNCI3CDYx7GeOTzLVsUDqM856BM-FP6IqsuJZ1YcrRBil-R4tNMVK"/>
+</div>
+</div>
+</header>
+<!-- Main Content Canvas -->
+<main class="flex-grow w-full max-w-container-max mx-auto px-margin-mobile md:px-8 py-8 flex flex-col gap-stack-lg">
+<!-- Page Header & Actions -->
+<div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+<div>
+<h1 class="font-headline-lg text-headline-lg text-primary">Trainer Management</h1>
+<p class="font-body-sm text-body-sm text-text-muted mt-1">Manage and assign your educational trainers.</p>
+</div>
+<button class="bg-primary text-on-primary font-label-md text-label-md px-4 py-2 rounded-lg hover:shadow-md hover:bg-primary/90 transition-all flex items-center gap-2">
+<span class="material-symbols-outlined text-[18px]">add</span>
+                Add Trainer
+            </button>
+</div>
+<!-- Data Table Card -->
+<div class="bg-surface border border-outline-variant/50 rounded-xl overflow-hidden shadow-sm transition-shadow hover:shadow-md hover:border-primary/30">
+<div class="overflow-x-auto">
+<table class="w-full text-left border-collapse">
+<thead>
+<tr class="bg-surface-container-low font-label-md text-label-md text-on-surface-variant border-b border-outline-variant/30">
+<th class="py-4 px-6 font-semibold">Name</th>
+<th class="py-4 px-6 font-semibold">Expertise</th>
+<th class="py-4 px-6 font-semibold">Contact</th>
+<th class="py-4 px-6 font-semibold">Status</th>
+<th class="py-4 px-6 font-semibold text-right">Actions</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-outline-variant/20">
+<tr class="hover:bg-surface-container-lowest/50 transition-colors group">
+<td class="py-4 px-6">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-full bg-primary-container text-on-primary-container flex items-center justify-center font-bold text-sm">
+                                        JD
+                                    </div>
+<div>
+<p class="font-semibold text-text-main">John Doe</p>
+<p class="text-xs text-text-muted">ID: TRN-001</p>
+</div>
+</div>
+</td>
+<td class="py-4 px-6">
+<span class="bg-surface-container text-on-surface-variant text-xs px-2 py-1 rounded-md">Data Science</span>
+</td>
+<td class="py-4 px-6 text-text-muted">john.doe@example.com</td>
+<td class="py-4 px-6">
+<span class="inline-flex items-center gap-1 bg-success/10 text-success text-xs font-semibold px-2.5 py-0.5 rounded-full">
+<span class="w-1.5 h-1.5 rounded-full bg-success"></span> Active
+                                </span>
+</td>
+<td class="py-4 px-6 text-right">
+<button class="text-text-muted hover:text-primary transition-colors p-1"><span class="material-symbols-outlined text-[20px]">edit</span></button>
+<button class="text-text-muted hover:text-error transition-colors p-1 ml-2"><span class="material-symbols-outlined text-[20px]">delete</span></button>
+</td>
+</tr>
+<tr class="hover:bg-surface-container-lowest/50 transition-colors group">
+<td class="py-4 px-6">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-full bg-tertiary-container text-on-tertiary-container flex items-center justify-center font-bold text-sm">
+                                        JS
+                                    </div>
+<div>
+<p class="font-semibold text-text-main">Jane Smith</p>
+<p class="text-xs text-text-muted">ID: TRN-002</p>
+</div>
+</div>
+</td>
+<td class="py-4 px-6">
+<span class="bg-surface-container text-on-surface-variant text-xs px-2 py-1 rounded-md">Digital Marketing</span>
+</td>
+<td class="py-4 px-6 text-text-muted">jane.s@example.com</td>
+<td class="py-4 px-6">
+<span class="inline-flex items-center gap-1 bg-success/10 text-success text-xs font-semibold px-2.5 py-0.5 rounded-full">
+<span class="w-1.5 h-1.5 rounded-full bg-success"></span> Active
+                                </span>
+</td>
+<td class="py-4 px-6 text-right">
+<button class="text-text-muted hover:text-primary transition-colors p-1"><span class="material-symbols-outlined text-[20px]">edit</span></button>
+<button class="text-text-muted hover:text-error transition-colors p-1 ml-2"><span class="material-symbols-outlined text-[20px]">delete</span></button>
+</td>
+</tr>
+<tr class="hover:bg-surface-container-lowest/50 transition-colors group">
+<td class="py-4 px-6">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-full bg-secondary-container text-on-secondary-container flex items-center justify-center font-bold text-sm">
+                                        MJ
+                                    </div>
+<div>
+<p class="font-semibold text-text-main">Michael Johnson</p>
+<p class="text-xs text-text-muted">ID: TRN-003</p>
+</div>
+</div>
+</td>
+<td class="py-4 px-6">
+<span class="bg-surface-container text-on-surface-variant text-xs px-2 py-1 rounded-md">UI/UX Design</span>
+</td>
+<td class="py-4 px-6 text-text-muted">mjohnson@example.com</td>
+<td class="py-4 px-6">
+<span class="inline-flex items-center gap-1 bg-warning/10 text-warning text-xs font-semibold px-2.5 py-0.5 rounded-full">
+<span class="w-1.5 h-1.5 rounded-full bg-warning"></span> On Leave
+                                </span>
+</td>
+<td class="py-4 px-6 text-right">
+<button class="text-text-muted hover:text-primary transition-colors p-1"><span class="material-symbols-outlined text-[20px]">edit</span></button>
+<button class="text-text-muted hover:text-error transition-colors p-1 ml-2"><span class="material-symbols-outlined text-[20px]">delete</span></button>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+<!-- Pagination (simplified) -->
+<div class="px-6 py-4 border-t border-outline-variant/30 flex items-center justify-between bg-surface-container-lowest">
+<span class="text-sm text-text-muted">Showing 1 to 3 of 24 trainers</span>
+<div class="flex gap-2">
+<button class="px-3 py-1 border border-outline-variant rounded hover:bg-surface-container-low transition-colors text-sm disabled:opacity-50" disabled="">Previous</button>
+<button class="px-3 py-1 border border-outline-variant rounded hover:bg-surface-container-low transition-colors text-sm">Next</button>
+</div>
+</div>
+</div>
+</main>
+<!-- Footer -->
+<footer class="bg-surface-container-low dark:bg-neutral-dark-bg text-on-surface-variant dark:text-surface-variant font-body-sm text-body-sm full-width mt-auto border-t border-outline-variant/20 dark:border-outline/10">
+<div class="w-full py-8 px-margin-mobile md:px-8 max-w-container-max mx-auto flex flex-col md:flex-row justify-between items-center gap-stack-md">
+<div class="font-label-md text-label-md font-bold text-primary dark:text-primary-fixed">Intelligo Ops</div>
+<div class="flex gap-4">
+<a class="text-text-muted dark:text-surface-variant hover:text-secondary dark:hover:text-secondary-fixed hover:underline underline-offset-4 transition-opacity duration-200 hover:opacity-80" href="#">Privacy Policy</a>
+<a class="text-text-muted dark:text-surface-variant hover:text-secondary dark:hover:text-secondary-fixed hover:underline underline-offset-4 transition-opacity duration-200 hover:opacity-80" href="#">Terms of Service</a>
+<a class="text-text-muted dark:text-surface-variant hover:text-secondary dark:hover:text-secondary-fixed hover:underline underline-offset-4 transition-opacity duration-200 hover:opacity-80" href="#">Support</a>
+</div>
+<div>© 2024 Intelligo Ops. All rights reserved.</div>
+</div>
+</footer>
+</body></html>

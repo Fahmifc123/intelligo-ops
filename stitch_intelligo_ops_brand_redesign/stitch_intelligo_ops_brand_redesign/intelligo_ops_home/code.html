@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+
+<html lang="id"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Intelligo Ops - Dashboard</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&amp;family=Inter:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "surface-variant": "#e2e2e4",
+                        "success": "#10B981",
+                        "background": "#faf9fb",
+                        "on-secondary-fixed-variant": "#802a00",
+                        "on-primary-container": "#7195ac",
+                        "surface": "#faf9fb",
+                        "primary-fixed-dim": "#a7cbe4",
+                        "warning": "#F59E0B",
+                        "primary-container": "#002d40",
+                        "secondary": "#a33800",
+                        "tertiary-fixed": "#ffdcc7",
+                        "primary": "#001723",
+                        "surface-dim": "#dadadb",
+                        "error-container": "#ffdad6",
+                        "on-surface": "#1a1c1d",
+                        "on-error-container": "#93000a",
+                        "on-tertiary-fixed": "#311300",
+                        "on-background": "#1a1c1d",
+                        "on-primary": "#ffffff",
+                        "on-secondary-container": "#fffbff",
+                        "neutral-light-bg": "#F8FAFC",
+                        "on-secondary": "#ffffff",
+                        "on-tertiary-container": "#b88665",
+                        "outline-variant": "#c2c7cc",
+                        "neutral-dark-bg": "#001B26",
+                        "secondary-fixed": "#ffdbce",
+                        "on-error": "#ffffff",
+                        "on-primary-fixed-variant": "#264b5f",
+                        "surface-container": "#eeeeef",
+                        "text-main": "#0F172A",
+                        "secondary-container": "#cd4800",
+                        "inverse-primary": "#a7cbe4",
+                        "surface-bright": "#faf9fb",
+                        "surface-tint": "#3f6378",
+                        "secondary-fixed-dim": "#ffb59a",
+                        "error": "#ba1a1a",
+                        "tertiary-fixed-dim": "#f3ba97",
+                        "on-secondary-fixed": "#370e00",
+                        "text-muted": "#64748B",
+                        "tertiary-container": "#422108",
+                        "primary-fixed": "#c4e7ff",
+                        "inverse-surface": "#2f3132",
+                        "tertiary": "#270e00",
+                        "inverse-on-surface": "#f1f0f2",
+                        "surface-container-highest": "#e2e2e4",
+                        "on-surface-variant": "#42484c",
+                        "on-tertiary": "#ffffff",
+                        "on-primary-fixed": "#001e2c",
+                        "outline": "#72787d",
+                        "on-tertiary-fixed-variant": "#653d22",
+                        "surface-container-lowest": "#ffffff",
+                        "surface-container-low": "#f4f3f5",
+                        "surface-container-high": "#e8e8ea"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "stack-sm": "0.5rem",
+                        "container-max": "1280px",
+                        "margin-mobile": "1rem",
+                        "stack-md": "1rem",
+                        "gutter": "1.5rem",
+                        "stack-lg": "1.5rem"
+                    },
+                    "fontFamily": {
+                        "headline-xl": ["Geist"],
+                        "label-sm": ["Geist"],
+                        "headline-lg": ["Geist"],
+                        "body-lg": ["Inter"],
+                        "headline-md": ["Geist"],
+                        "headline-lg-mobile": ["Geist"],
+                        "body-md": ["Inter"],
+                        "body-sm": ["Inter"],
+                        "label-md": ["Geist"],
+                        "headline-sm": ["Geist"]
+                    },
+                    "fontSize": {
+                        "headline-xl": ["40px", { "lineHeight": "48px", "letterSpacing": "-0.02em", "fontWeight": "700" }],
+                        "label-sm": ["12px", { "lineHeight": "14px", "fontWeight": "500" }],
+                        "headline-lg": ["32px", { "lineHeight": "40px", "letterSpacing": "-0.01em", "fontWeight": "600" }],
+                        "body-lg": ["18px", { "lineHeight": "28px", "fontWeight": "400" }],
+                        "headline-md": ["24px", { "lineHeight": "32px", "fontWeight": "600" }],
+                        "headline-lg-mobile": ["28px", { "lineHeight": "36px", "fontWeight": "600" }],
+                        "body-md": ["16px", { "lineHeight": "24px", "fontWeight": "400" }],
+                        "body-sm": ["14px", { "lineHeight": "20px", "fontWeight": "400" }],
+                        "label-md": ["14px", { "lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "600" }],
+                        "headline-sm": ["20px", { "lineHeight": "28px", "fontWeight": "600" }]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+    </style>
+</head>
+<body class="bg-background text-on-surface min-h-screen flex flex-col font-body-md">
+<!-- TopNavBar -->
+<nav class="bg-surface/80 dark:bg-surface-dim/80 backdrop-blur-md text-primary dark:text-primary-fixed-dim font-headline-sm text-headline-sm md:font-label-md md:text-label-md docked full-width top-0 sticky z-50 border-b border-outline-variant/30 dark:border-outline/20 flat no shadows flex justify-between items-center h-16 w-full px-margin-mobile md:px-8 max-w-container-max mx-auto">
+<div class="flex items-center gap-6">
+<div class="font-headline-md text-headline-md font-bold text-primary dark:text-primary-fixed mr-4 flex items-center gap-2">
+                Intelligo Ops
+            </div>
+<div class="hidden md:flex gap-6 h-full items-center">
+<a class="text-secondary dark:text-secondary-fixed border-b-2 border-secondary dark:border-secondary-fixed pb-1 font-bold transition-all duration-200 ease-in-out active:scale-95 hover:bg-surface-container-high/50 dark:hover:bg-surface-container-highest/10 rounded-lg px-3 py-2 flex h-full items-center mt-[2px]" href="#">Home</a>
+<a class="text-on-surface-variant dark:text-surface-variant hover:text-primary dark:hover:text-primary-fixed-dim transition-colors transition-all duration-200 ease-in-out active:scale-95 hover:bg-surface-container-high/50 dark:hover:bg-surface-container-highest/10 rounded-lg px-3 py-2" href="#">Trainer</a>
+<a class="text-on-surface-variant dark:text-surface-variant hover:text-primary dark:hover:text-primary-fixed-dim transition-colors transition-all duration-200 ease-in-out active:scale-95 hover:bg-surface-container-high/50 dark:hover:bg-surface-container-highest/10 rounded-lg px-3 py-2" href="#">Kelas</a>
+<a class="text-on-surface-variant dark:text-surface-variant hover:text-primary dark:hover:text-primary-fixed-dim transition-colors transition-all duration-200 ease-in-out active:scale-95 hover:bg-surface-container-high/50 dark:hover:bg-surface-container-highest/10 rounded-lg px-3 py-2" href="#">Sesi</a>
+<a class="text-on-surface-variant dark:text-surface-variant hover:text-primary dark:hover:text-primary-fixed-dim transition-colors transition-all duration-200 ease-in-out active:scale-95 hover:bg-surface-container-high/50 dark:hover:bg-surface-container-highest/10 rounded-lg px-3 py-2" href="#">Rekap Fee</a>
+</div>
+</div>
+<div class="flex items-center gap-4">
+<button class="p-2 rounded-full hover:bg-surface-container-high/50 transition-colors text-on-surface-variant">
+<span class="material-symbols-outlined" data-icon="notifications">notifications</span>
+</button>
+<button class="p-2 rounded-full hover:bg-surface-container-high/50 transition-colors text-on-surface-variant">
+<span class="material-symbols-outlined" data-icon="settings">settings</span>
+</button>
+<div class="w-8 h-8 rounded-full bg-surface-variant overflow-hidden border border-outline-variant/30 ml-2">
+<img alt="User profile" class="w-full h-full object-cover" data-alt="A small circular avatar placeholder showing a generic user silhouette in minimalist style, using deep navy and soft gray colors." src="https://lh3.googleusercontent.com/aida-public/AB6AXuC_uP2rxCUHjFFfPswsbJHQ_Fwmm8TE1kpqMaNV4yeUg9Gh5T7rBPz3XwB9NsMxxGwEPgS_Dxc8lU1O5r_cyQ8sbsomydwv9MdIfRzuTCbL4EzwDpoU_8F4tk6P7yoNBlFDnmWdR_VPt1ZALUvCuKTpgP4VxoUN7Hqzu5frN7nD9DoG4e51g9drfFZEYYM3ZdDGIguThUe7kMJw4NUFElS7x5zAprI91ujT_-wZOmv8oyjuBs6XC9fI"/>
+</div>
+</div>
+</nav>
+<!-- Main Content -->
+<main class="flex-grow w-full max-w-container-max mx-auto px-margin-mobile md:px-8 py-12 flex flex-col gap-stack-lg">
+<!-- Hero Section -->
+<section class="mb-8">
+<h1 class="font-headline-xl text-headline-xl text-primary mb-4">Intelligo Ops</h1>
+<p class="font-body-lg text-body-lg text-text-muted max-w-2xl">
+                Sistem operasional keuangan &amp; fee trainer. Ganti dari spreadsheet IMPORTRANGE ke database beneran.
+            </p>
+</section>
+<!-- Bento Grid Dashboard -->
+<section class="grid grid-cols-1 md:grid-cols-2 gap-gutter">
+<!-- Card 1: Trainer -->
+<a class="group block bg-surface rounded-xl p-8 border border-outline-variant/50 hover:border-primary/30 hover:shadow-md transition-all duration-300 relative overflow-hidden flex flex-col justify-between min-h-[200px]" href="#">
+<div class="absolute top-0 right-0 p-6 opacity-10 group-hover:opacity-20 transition-opacity">
+<span class="material-symbols-outlined text-[80px]" data-icon="group">group</span>
+</div>
+<div>
+<h2 class="font-headline-md text-headline-md text-primary mb-2 group-hover:text-secondary transition-colors">Trainer</h2>
+<p class="font-body-md text-body-md text-text-muted">Kelola data trainer</p>
+</div>
+<div class="mt-8 flex justify-end">
+<div class="w-10 h-10 rounded-full bg-surface-container-low flex items-center justify-center group-hover:bg-secondary/10 transition-colors">
+<span class="material-symbols-outlined text-on-surface-variant group-hover:text-secondary" data-icon="arrow_forward">arrow_forward</span>
+</div>
+</div>
+</a>
+<!-- Card 2: Kelas -->
+<a class="group block bg-surface rounded-xl p-8 border border-outline-variant/50 hover:border-primary/30 hover:shadow-md transition-all duration-300 relative overflow-hidden flex flex-col justify-between min-h-[200px]" href="#">
+<div class="absolute top-0 right-0 p-6 opacity-10 group-hover:opacity-20 transition-opacity">
+<span class="material-symbols-outlined text-[80px]" data-icon="school">school</span>
+</div>
+<div>
+<h2 class="font-headline-md text-headline-md text-primary mb-2 group-hover:text-secondary transition-colors">Kelas</h2>
+<p class="font-body-md text-body-md text-text-muted">Kelola kelas &amp; assign trainer</p>
+</div>
+<div class="mt-8 flex justify-end">
+<div class="w-10 h-10 rounded-full bg-surface-container-low flex items-center justify-center group-hover:bg-secondary/10 transition-colors">
+<span class="material-symbols-outlined text-on-surface-variant group-hover:text-secondary" data-icon="arrow_forward">arrow_forward</span>
+</div>
+</div>
+</a>
+<!-- Card 3: Sesi -->
+<a class="group block bg-surface rounded-xl p-8 border border-outline-variant/50 hover:border-primary/30 hover:shadow-md transition-all duration-300 relative overflow-hidden flex flex-col justify-between min-h-[200px]" href="#">
+<div class="absolute top-0 right-0 p-6 opacity-10 group-hover:opacity-20 transition-opacity">
+<span class="material-symbols-outlined text-[80px]" data-icon="calendar_today">calendar_today</span>
+</div>
+<div>
+<h2 class="font-headline-md text-headline-md text-primary mb-2 group-hover:text-secondary transition-colors">Sesi</h2>
+<p class="font-body-md text-body-md text-text-muted">Input &amp; tandai sesi selesai</p>
+</div>
+<div class="mt-8 flex justify-end">
+<div class="w-10 h-10 rounded-full bg-surface-container-low flex items-center justify-center group-hover:bg-secondary/10 transition-colors">
+<span class="material-symbols-outlined text-on-surface-variant group-hover:text-secondary" data-icon="arrow_forward">arrow_forward</span>
+</div>
+</div>
+</a>
+<!-- Card 4: Rekap Fee -->
+<a class="group block bg-surface rounded-xl p-8 border border-outline-variant/50 hover:border-primary/30 hover:shadow-md transition-all duration-300 relative overflow-hidden flex flex-col justify-between min-h-[200px]" href="#">
+<div class="absolute top-0 right-0 p-6 opacity-10 group-hover:opacity-20 transition-opacity">
+<span class="material-symbols-outlined text-[80px]" data-icon="account_balance_wallet">account_balance_wallet</span>
+</div>
+<div>
+<h2 class="font-headline-md text-headline-md text-primary mb-2 group-hover:text-secondary transition-colors">Rekap Fee</h2>
+<p class="font-body-md text-body-md text-text-muted">Lihat fee otomatis per trainer</p>
+</div>
+<div class="mt-8 flex justify-end">
+<div class="w-10 h-10 rounded-full bg-surface-container-low flex items-center justify-center group-hover:bg-secondary/10 transition-colors">
+<span class="material-symbols-outlined text-on-surface-variant group-hover:text-secondary" data-icon="arrow_forward">arrow_forward</span>
+</div>
+</div>
+</a>
+</section>
+</main>
+<!-- Footer -->
+<footer class="bg-surface-container-low dark:bg-neutral-dark-bg text-on-surface-variant dark:text-surface-variant font-body-sm text-body-sm full-width mt-auto border-t border-outline-variant/20 dark:border-outline/10 flat no shadows w-full py-8 px-margin-mobile md:px-8 max-w-container-max mx-auto flex flex-col md:flex-row justify-between items-center gap-stack-md transition-opacity duration-200 hover:opacity-80">
+<div class="font-label-md text-label-md font-bold text-primary dark:text-primary-fixed mb-4 md:mb-0">
+            Intelligo Ops
+        </div>
+<div class="flex gap-6">
+<a class="text-text-muted dark:text-surface-variant hover:text-secondary dark:hover:text-secondary-fixed hover:underline underline-offset-4" href="#">Privacy Policy</a>
+<a class="text-text-muted dark:text-surface-variant hover:text-secondary dark:hover:text-secondary-fixed hover:underline underline-offset-4" href="#">Terms of Service</a>
+<a class="text-text-muted dark:text-surface-variant hover:text-secondary dark:hover:text-secondary-fixed hover:underline underline-offset-4" href="#">Support</a>
+</div>
+<div class="mt-4 md:mt-0 text-text-muted">
+            © 2024 Intelligo Ops. All rights reserved.
+        </div>
+</footer>
+</body></html>

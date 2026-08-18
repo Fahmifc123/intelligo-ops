@@ -1,0 +1,1 @@
+ALTER TABLE `payslip` ADD `paid_at` text;

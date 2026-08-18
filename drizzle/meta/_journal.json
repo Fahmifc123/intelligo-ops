@@ -1,0 +1,34 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1787020976354,
+      "tag": "0000_same_killer_shrike",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1787021764971,
+      "tag": "0001_slow_gateway",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1787031898915,
+      "tag": "0002_quiet_corsair",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1787033194013,
+      "tag": "0003_overrated_stellaris",
+      "breakpoints": true
+    }
+  ]
+}
