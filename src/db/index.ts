@@ -17,6 +17,7 @@ import * as schema from "./schema";
  * filesystem serverless-nya read-only dan ephemeral, jadi semua operasi
  * tulis bakal gagal. Di production wajib pakai Turso.
  */
+
 // Dua driver (libsql & better-sqlite3) punya tipe yang beda walau API
 // query-nya sama persis. Tanpa ini, union type-nya bikin TypeScript
 // kehilangan tipe query builder di semua route.
@@ -35,9 +36,8 @@ function createDb(): Db {
     ) as unknown as Db;
   }
 
-  // Guard: kalau jalan di serverless tanpa Turso, gagal cepat dengan pesan
-  // jelas - lebih baik daripada error "readonly database" yang bikin bingung
-  // pas request pertama yang nulis.
+  // Guard: kalau jalan di serverless tanpa Turso, gagal dengan pesan jelas -
+  // lebih baik daripada error "readonly database" yang bikin bingung.
   if (process.env.VERCEL) {
     throw new Error(
       "TURSO_DATABASE_URL belum di-set. SQLite file gak bisa dipakai di Vercel " +
@@ -51,4 +51,30 @@ function createDb(): Db {
   return drizzleSqlite(sqlite, { schema });
 }
 
-export const db = createDb();
+/**
+ * Koneksi dibikin LAZY (baru pas query pertama), bukan pas modul di-import.
+ *
+ * Alasannya: `next build` nge-import tiap route buat collect config-nya.
+ * Kalau koneksi dibikin di top-level, error "TURSO_DATABASE_URL belum di-set"
+ * kelempar pas BUILD - padahal build sama sekali gak butuh akses DB.
+ * Dengan lazy, build selalu lolos dan errornya baru muncul pas ada request
+ * beneran yang butuh DB (di situ pesannya emang relevan).
+ *
+ * Proxy dipakai biar semua `import { db }` yang udah ada gak perlu diubah.
+ */
+let dbInstance: Db | null = null;
+
+function getDb(): Db {
+  if (!dbInstance) dbInstance = createDb();
+  return dbInstance;
+}
+
+export const db = new Proxy({} as Db, {
+  get(_target, prop) {
+    const real = getDb();
+    const value = Reflect.get(real, prop) as unknown;
+    // Method di-bind ke instance aslinya - kalau nggak, `this` di dalam
+    // drizzle nunjuk ke Proxy dan internal state-nya jadi gak kebaca.
+    return typeof value === "function" ? value.bind(real) : value;
+  },
+});
