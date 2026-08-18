@@ -32,6 +32,7 @@ export async function GET(req: NextRequest) {
       sesiId: payslipItem.sesiId,
       ratePerSesi: payslipItem.ratePerSesi,
       pertemuanKe: sesi.pertemuanKe,
+      kelasId: kelas.id,
       kelasNama: kelas.nama,
     })
     .from(payslipItem)
@@ -47,6 +48,7 @@ export async function GET(req: NextRequest) {
       sesi: rowItems.map((i) => ({
         sesiId: i.sesiId,
         pertemuanKe: i.pertemuanKe,
+        kelasId: i.kelasId,
         kelasNama: i.kelasNama,
         ratePerSesi: i.ratePerSesi,
       })),

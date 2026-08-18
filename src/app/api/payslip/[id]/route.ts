@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
-import { payslip, payslipItem } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { payslip, payslipItem, sesi, feeRule } from "@/db/schema";
+import { eq, inArray, ne, and } from "drizzle-orm";
 
 const VALID_STATUS = ["draft", "belum_dibayar", "lunas"] as const;
 type Status = (typeof VALID_STATUS)[number];
@@ -52,6 +52,95 @@ export async function PATCH(
     })
     .where(eq(payslip.id, id))
     .returning();
+
+  return NextResponse.json(row);
+}
+
+// PUT /api/payslip/[id] { sesiIds: string[], periode?: "YYYY-MM" }
+// Ganti seluruh set sesi payslip yang masih draft (buat tombol "Edit"
+// sebelum Finalisasi diklik). Cuma boleh selagi draft - begitu udah
+// difinalisasi, harus dibalikin ke draft dulu (PATCH status) baru bisa diedit.
+export async function PUT(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params;
+  const body = await req.json();
+  const { sesiIds } = body;
+
+  if (!Array.isArray(sesiIds) || sesiIds.length === 0) {
+    return NextResponse.json({ error: "sesiIds (minimal 1) wajib diisi" }, { status: 400 });
+  }
+  if (body.periode !== undefined && !/^\d{4}-\d{2}$/.test(body.periode)) {
+    return NextResponse.json(
+      { error: "periode harus format YYYY-MM, mis. 2026-08" },
+      { status: 400 }
+    );
+  }
+
+  const [existing] = await db.select().from(payslip).where(eq(payslip.id, id));
+  if (!existing) return NextResponse.json({ error: "not found" }, { status: 404 });
+  if (existing.status !== "draft") {
+    return NextResponse.json(
+      { error: "Payslip cuma bisa diedit selagi masih draft. Balikin ke draft dulu." },
+      { status: 409 }
+    );
+  }
+
+  // Validasi sama kayak POST: sesi harus ada & "selesai", dan belum
+  // nempel di payslip LAIN (nempel di payslip ini sendiri itu wajar,
+  // karena kita lagi nge-replace isi payslip ini).
+  const sesiRows = await db
+    .select({
+      id: sesi.id,
+      status: sesi.status,
+      ratePerSesi: feeRule.ratePerSesi,
+    })
+    .from(sesi)
+    .leftJoin(feeRule, eq(feeRule.kelasId, sesi.kelasId))
+    .where(inArray(sesi.id, sesiIds));
+
+  if (sesiRows.length !== sesiIds.length) {
+    return NextResponse.json({ error: "Ada sesiId yang gak ditemukan" }, { status: 400 });
+  }
+  const belumSelesai = sesiRows.filter((s) => s.status !== "selesai");
+  if (belumSelesai.length > 0) {
+    return NextResponse.json(
+      { error: `${belumSelesai.length} sesi yang dipilih belum berstatus selesai` },
+      { status: 400 }
+    );
+  }
+
+  const existingItems = await db
+    .select({ sesiId: payslipItem.sesiId })
+    .from(payslipItem)
+    .where(and(inArray(payslipItem.sesiId, sesiIds), ne(payslipItem.payslipId, id)));
+  if (existingItems.length > 0) {
+    return NextResponse.json(
+      {
+        error: `${existingItems.length} sesi yang dipilih udah masuk payslip lain. Batalin payslip lama dulu kalau mau pindahin.`,
+      },
+      { status: 409 }
+    );
+  }
+
+  await db.delete(payslipItem).where(eq(payslipItem.payslipId, id));
+  await db.insert(payslipItem).values(
+    sesiRows.map((s) => ({
+      payslipId: id,
+      sesiId: s.id,
+      ratePerSesi: s.ratePerSesi ?? 0,
+    }))
+  );
+
+  let row = existing;
+  if (body.periode !== undefined && body.periode !== existing.periode) {
+    [row] = await db
+      .update(payslip)
+      .set({ periode: body.periode })
+      .where(eq(payslip.id, id))
+      .returning();
+  }
 
   return NextResponse.json(row);
 }

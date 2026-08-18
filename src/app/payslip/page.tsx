@@ -30,7 +30,13 @@ type Payslip = {
   paidAt: string | null;
   jumlahSesi: number;
   totalFee: number;
-  sesi: { sesiId: string; pertemuanKe: number; kelasNama: string | null; ratePerSesi: number }[];
+  sesi: {
+    sesiId: string;
+    pertemuanKe: number;
+    kelasId: string | null;
+    kelasNama: string | null;
+    ratePerSesi: number;
+  }[];
 };
 
 const STATUS_LABEL: Record<string, string> = {
@@ -76,6 +82,8 @@ export default function PayslipPage() {
   const [wTahun, setWTahun] = useState(String(currentYear()));
   const [wCreating, setWCreating] = useState(false);
   const [wMsg, setWMsg] = useState<string | null>(null);
+  // Kalau kepasang, wizard lagi mode edit payslip draft ini (bukan bikin baru).
+  const [wEditingId, setWEditingId] = useState<string | null>(null);
 
   async function load() {
     setLoading(true);
@@ -96,6 +104,7 @@ export default function PayslipPage() {
 
   function openWizard() {
     setStep(1);
+    setWEditingId(null);
     setWTrainerId("");
     setWKelasId("");
     setWSesiDetail([]);
@@ -104,6 +113,29 @@ export default function PayslipPage() {
     setWTahun(String(currentYear()));
     setWMsg(null);
     setWizardOpen(true);
+  }
+
+  // Buka wizard buat edit payslip draft yang udah ada - trainer, kelas,
+  // periode, dan sesi yang udah dicentang di-prefill dari payslip itu.
+  async function openEditWizard(p: Payslip) {
+    const kelasId = p.sesi[0]?.kelasId ?? "";
+    setWEditingId(p.id);
+    setWTrainerId(p.trainerId);
+    setWKelasId(kelasId);
+    const [bulan, tahun] = [p.periode.split("-")[1], p.periode.split("-")[0]];
+    setWBulan(bulan);
+    setWTahun(tahun);
+    setWMsg(null);
+    setWSesiLoading(true);
+    setStep(3);
+    setWizardOpen(true);
+    const data = await fetch(`/api/fee/detail?trainerId=${p.trainerId}`).then((r) => r.json());
+    const sesiKelas = (data.sesi ?? []).filter((s: SesiDetail) => s.kelasId === kelasId);
+    setWSesiDetail(sesiKelas);
+    // Sesi yang udah nempel di payslip INI SENDIRI dianggep boleh dicentang
+    // (bukan "kepakai payslip lain") - makanya di-preselect di sini.
+    setWChecked(new Set(p.sesi.map((s) => s.sesiId)));
+    setWSesiLoading(false);
   }
 
   function closeWizard() {
@@ -141,19 +173,27 @@ export default function PayslipPage() {
     .filter((s) => wChecked.has(s.sesiId))
     .reduce((sum, s) => sum + s.ratePerSesi, 0);
 
-  async function createPayslip() {
+  async function simpanPayslip() {
     if (wChecked.size === 0) return;
     setWCreating(true);
     setWMsg(null);
-    const res = await fetch("/api/payslip", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        trainerId: wTrainerId,
-        periode: wPeriode,
-        sesiIds: Array.from(wChecked),
-      }),
-    });
+
+    const res = wEditingId
+      ? await fetch(`/api/payslip/${wEditingId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ periode: wPeriode, sesiIds: Array.from(wChecked) }),
+        })
+      : await fetch("/api/payslip", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            trainerId: wTrainerId,
+            periode: wPeriode,
+            sesiIds: Array.from(wChecked),
+          }),
+        });
+
     const data = await res.json();
     if (!res.ok) {
       setWMsg(`Gagal: ${data.error}`);
@@ -303,6 +343,13 @@ export default function PayslipPage() {
                 {p.status === "draft" && (
                   <>
                     <button
+                      onClick={() => openEditWizard(p)}
+                      className="flex items-center gap-1.5 rounded-lg border border-outline-variant px-4 py-2 font-geist text-label-sm text-on-surface-variant transition-colors hover:bg-surface-container"
+                    >
+                      <span className="material-symbols-outlined text-[16px]">edit</span>
+                      Edit
+                    </button>
+                    <button
                       onClick={() => ubahStatus(p.id, "belum_dibayar")}
                       className="rounded-lg bg-primary px-4 py-2 font-geist text-label-sm text-on-primary transition-colors hover:bg-primary-container"
                     >
@@ -345,7 +392,9 @@ export default function PayslipPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-on-surface/40 p-4">
           <div className="flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-xl bg-surface-container-lowest shadow-lg">
             <div className="flex items-center justify-between border-b border-outline-variant px-6 py-4">
-              <h2 className="font-geist text-headline-sm text-primary">Buat Payslip Baru</h2>
+              <h2 className="font-geist text-headline-sm text-primary">
+                {wEditingId ? "Edit Payslip" : "Buat Payslip Baru"}
+              </h2>
               <button
                 onClick={closeWizard}
                 className="rounded-full p-1.5 text-text-muted transition-colors hover:bg-surface-container"
@@ -440,38 +489,44 @@ export default function PayslipPage() {
 
                   {!wSesiLoading && wSesiDetail.length > 0 && (
                     <div className="flex max-h-64 flex-col gap-1 overflow-y-auto rounded-lg border border-outline-variant">
-                      {wSesiDetail.map((s) => (
-                        <label
-                          key={s.sesiId}
-                          className={`flex items-center gap-3 border-b border-outline-variant/40 px-4 py-2.5 last:border-b-0 ${
-                            s.sudahDiPayslip
-                              ? "cursor-not-allowed opacity-50"
-                              : "cursor-pointer hover:bg-neutral-light-bg"
-                          }`}
-                        >
-                          <input
-                            type="checkbox"
-                            disabled={s.sudahDiPayslip}
-                            checked={wChecked.has(s.sesiId)}
-                            onChange={() => toggleChecked(s.sesiId)}
-                            className="h-4 w-4 rounded border-outline-variant text-primary focus:ring-primary"
-                          />
-                          <span className="w-16 shrink-0 font-geist text-label-sm text-text-muted">
-                            Sesi {s.pertemuanKe}
-                          </span>
-                          <span className="flex-1 truncate font-inter text-body-sm text-on-surface-variant">
-                            {s.materi ?? "-"}
-                          </span>
-                          <span className="w-24 shrink-0 text-right font-inter text-body-sm text-primary">
-                            {formatRupiah(s.ratePerSesi)}
-                          </span>
-                          {s.sudahDiPayslip && (
-                            <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 font-geist text-label-sm text-primary">
-                              {s.payslipPeriode}
+                      {wSesiDetail.map((s) => {
+                        // Sesi yang nempel di payslip yang LAGI DIEDIT ini
+                        // sendiri boleh dicentang/lepas bebas - cuma sesi
+                        // yang kepakai payslip LAIN yang beneran di-lock.
+                        const locked = s.sudahDiPayslip && s.payslipId !== wEditingId;
+                        return (
+                          <label
+                            key={s.sesiId}
+                            className={`flex items-center gap-3 border-b border-outline-variant/40 px-4 py-2.5 last:border-b-0 ${
+                              locked
+                                ? "cursor-not-allowed opacity-50"
+                                : "cursor-pointer hover:bg-neutral-light-bg"
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              disabled={locked}
+                              checked={wChecked.has(s.sesiId)}
+                              onChange={() => toggleChecked(s.sesiId)}
+                              className="h-4 w-4 rounded border-outline-variant text-primary focus:ring-primary"
+                            />
+                            <span className="w-16 shrink-0 font-geist text-label-sm text-text-muted">
+                              Sesi {s.pertemuanKe}
                             </span>
-                          )}
-                        </label>
-                      ))}
+                            <span className="flex-1 truncate font-inter text-body-sm text-on-surface-variant">
+                              {s.materi ?? "-"}
+                            </span>
+                            <span className="w-24 shrink-0 text-right font-inter text-body-sm text-primary">
+                              {formatRupiah(s.ratePerSesi)}
+                            </span>
+                            {locked && (
+                              <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 font-geist text-label-sm text-primary">
+                                {s.payslipPeriode}
+                              </span>
+                            )}
+                          </label>
+                        );
+                      })}
                     </div>
                   )}
 
@@ -518,12 +573,12 @@ export default function PayslipPage() {
                     : "Belum ada sesi dipilih"}
                 </span>
                 <button
-                  onClick={createPayslip}
+                  onClick={simpanPayslip}
                   disabled={wCreating || wChecked.size === 0}
                   className="flex items-center gap-2 rounded-lg bg-primary px-6 py-2.5 font-geist text-label-md text-on-primary shadow-sm transition-colors hover:bg-primary-container disabled:opacity-50"
                 >
                   <span className="material-symbols-outlined text-[18px]">receipt_long</span>
-                  {wCreating ? "Membuat..." : "Buat Payslip"}
+                  {wCreating ? "Menyimpan..." : wEditingId ? "Simpan Perubahan" : "Buat Payslip"}
                 </button>
               </div>
             )}
