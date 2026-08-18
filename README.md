@@ -137,31 +137,25 @@ Kalau mau bawa data lokal yang udah ke-migrate dari Excel juga, bisa dump
 `data.db` terus import ke Turso - lihat dokumentasi Turso soal `turso db
 shell .dump` / import.
 
-### 2. Update koneksi database buat production
+### 2. Koneksi database (SUDAH DIKERJAKAN)
 
-Ganti `src/db/index.ts` supaya pakai `drizzle-orm/libsql` waktu
-`TURSO_DATABASE_URL` ada (kalau gak ada, fallback ke SQLite lokal biar dev
-tetep gampang):
+`src/db/index.ts` udah otomatis milih driver dari env:
 
-```ts
-import { drizzle as drizzleLibsql } from "drizzle-orm/libsql";
-import { createClient } from "@libsql/client";
-import { drizzle as drizzleSqlite } from "drizzle-orm/better-sqlite3";
-import Database from "better-sqlite3";
-import * as schema from "./schema";
+- `TURSO_DATABASE_URL` ada  -> pakai Turso (libSQL)
+- `TURSO_DATABASE_URL` kosong -> fallback ke file `data.db` lokal
 
-export const db = process.env.TURSO_DATABASE_URL
-  ? drizzleLibsql(
-      createClient({
-        url: process.env.TURSO_DATABASE_URL,
-        authToken: process.env.TURSO_AUTH_TOKEN,
-      }),
-      { schema }
-    )
-  : drizzleSqlite(new Database(process.env.DATABASE_PATH || "data.db"), { schema });
+Driver `@libsql/client` juga udah keinstall. Jadi gak ada yang perlu
+diubah di kode - tinggal isi env-nya.
+
+Kalau mau lokal ikut nunjuk Turso (biar data lokal & Vercel sinkron),
+bikin file `.env.local` di root project:
+
+```
+TURSO_DATABASE_URL=libsql://xxxxx.turso.io
+TURSO_AUTH_TOKEN=xxxxx
 ```
 
-Install driver-nya: `npm install @libsql/client`
+Restart `npm run dev` setelah bikin file itu.
 
 ### 3. Deploy ke Vercel
 

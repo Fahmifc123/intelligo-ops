@@ -66,6 +66,9 @@ export default function PayslipPage() {
   const [wSesiDetail, setWSesiDetail] = useState<SesiDetail[]>([]);
   const [wSesiLoading, setWSesiLoading] = useState(false);
   const [wChecked, setWChecked] = useState<Set<string>>(new Set());
+  // Input range pemilihan sesi, mis. "1-33" atau "1-10, 15, 20-25".
+  const [wRangeInput, setWRangeInput] = useState("");
+  const [wRangeMsg, setWRangeMsg] = useState<string | null>(null);
   const [wBulan, setWBulan] = useState(BULAN[new Date().getMonth()]);
   const [wTahun, setWTahun] = useState(String(currentYear()));
   const [wCreating, setWCreating] = useState(false);
@@ -97,6 +100,8 @@ export default function PayslipPage() {
     setWKelasId("");
     setWSesiDetail([]);
     setWChecked(new Set());
+    setWRangeInput("");
+    setWRangeMsg(null);
     setWBulan(BULAN[new Date().getMonth()]);
     setWTahun(String(currentYear()));
     setWMsg(null);
@@ -110,6 +115,8 @@ export default function PayslipPage() {
     setWEditingId(p.id);
     setWTrainerId(p.trainerId);
     setWKelasId(kelasId);
+    setWRangeInput("");
+    setWRangeMsg(null);
     const [bulan, tahun] = [p.periode.split("-")[1], p.periode.split("-")[0]];
     setWBulan(bulan);
     setWTahun(tahun);
@@ -140,6 +147,8 @@ export default function PayslipPage() {
   async function pickKelas(kelasId: string) {
     setWKelasId(kelasId);
     setWChecked(new Set());
+    setWRangeInput("");
+    setWRangeMsg(null);
     setWSesiLoading(true);
     const data = await fetch(`/api/fee/detail?trainerId=${wTrainerId}`).then((r) => r.json());
     setWSesiDetail((data.sesi ?? []).filter((s: SesiDetail) => s.kelasId === kelasId));
@@ -154,6 +163,83 @@ export default function PayslipPage() {
       else next.add(sesiId);
       return next;
     });
+  }
+
+  /**
+   * Parse input range jadi daftar nomor pertemuan.
+   * Format yang didukung: "1-33", "5", "1-10, 15, 20-25".
+   * Balikin null kalau formatnya gak valid.
+   */
+  function parseRange(input: string): number[] | null {
+    const trimmed = input.trim();
+    if (!trimmed) return null;
+    const hasil: number[] = [];
+
+    for (const bagian of trimmed.split(",")) {
+      const potongan = bagian.trim();
+      if (!potongan) continue;
+
+      const range = potongan.match(/^(\d+)\s*-\s*(\d+)$/);
+      if (range) {
+        let awal = parseInt(range[1], 10);
+        let akhir = parseInt(range[2], 10);
+        // Toleran kalau user nulis kebalik ("33-1").
+        if (awal > akhir) [awal, akhir] = [akhir, awal];
+        for (let i = awal; i <= akhir; i++) hasil.push(i);
+        continue;
+      }
+
+      const tunggal = potongan.match(/^\d+$/);
+      if (tunggal) {
+        hasil.push(parseInt(potongan, 10));
+        continue;
+      }
+
+      return null; // ada potongan yang gak kebaca -> anggap invalid semua
+    }
+
+    return hasil.length ? hasil : null;
+  }
+
+  /** Centang sesi sesuai range yang diketik, skip yang udah kepakai payslip lain. */
+  function pilihRange() {
+    const nomor = parseRange(wRangeInput);
+    if (!nomor) {
+      setWRangeMsg('Format gak kebaca. Contoh yang bener: "1-33" atau "1-10, 15, 20-25".');
+      return;
+    }
+
+    const set = new Set(nomor);
+    const cocok = wSesiDetail.filter((s) => set.has(s.pertemuanKe));
+    const bisaDipilih = cocok.filter((s) => !s.sudahDiPayslip || s.payslipId === wEditingId);
+    const terkunci = cocok.length - bisaDipilih.length;
+    const takAda = nomor.filter((n) => !wSesiDetail.some((s) => s.pertemuanKe === n));
+
+    setWChecked((prev) => {
+      const next = new Set(prev);
+      for (const s of bisaDipilih) next.add(s.sesiId);
+      return next;
+    });
+
+    // Kasih tau kalau ada yang gak bisa dipilih, biar user gak bingung
+    // kenapa jumlah yang kecentang beda dari yang diketik.
+    const catatan: string[] = [`${bisaDipilih.length} sesi dicentang`];
+    if (terkunci > 0) catatan.push(`${terkunci} dilewati (udah di payslip lain)`);
+    if (takAda.length > 0) catatan.push(`${takAda.length} nomor gak ada di kelas ini`);
+    setWRangeMsg(catatan.join(" · "));
+  }
+
+  function pilihSemua() {
+    const bisaDipilih = wSesiDetail.filter(
+      (s) => !s.sudahDiPayslip || s.payslipId === wEditingId
+    );
+    setWChecked(new Set(bisaDipilih.map((s) => s.sesiId)));
+    setWRangeMsg(`${bisaDipilih.length} sesi dicentang`);
+  }
+
+  function bersihkanPilihan() {
+    setWChecked(new Set());
+    setWRangeMsg(null);
   }
 
   const wPeriode = `${wTahun}-${wBulan}`;
@@ -473,6 +559,64 @@ export default function PayslipPage() {
                     <p className="font-inter text-body-sm text-text-muted">
                       Belum ada sesi selesai di kelas ini.
                     </p>
+                  )}
+
+                  {/* Pilih banyak sekaligus - ngetik range jauh lebih cepat
+                      daripada nyentang 30+ sesi satu-satu. */}
+                  {!wSesiLoading && wSesiDetail.length > 0 && (
+                    <div className="flex flex-col gap-2 rounded-lg border border-outline-variant bg-surface-container-low p-3">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <label
+                          htmlFor="range-sesi"
+                          className="font-geist text-label-sm text-text-muted"
+                        >
+                          Pilih range:
+                        </label>
+                        <input
+                          id="range-sesi"
+                          className={`${inputClass} w-40`}
+                          placeholder="mis. 1-33"
+                          value={wRangeInput}
+                          onChange={(e) => {
+                            setWRangeInput(e.target.value);
+                            setWRangeMsg(null);
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              pilihRange();
+                            }
+                          }}
+                        />
+                        <button
+                          type="button"
+                          onClick={pilihRange}
+                          disabled={!wRangeInput.trim()}
+                          className="rounded-lg bg-primary px-4 py-2 font-geist text-label-sm text-on-primary transition-colors hover:bg-primary-container disabled:opacity-50"
+                        >
+                          Centang
+                        </button>
+                        <span className="text-outline-variant">|</span>
+                        <button
+                          type="button"
+                          onClick={pilihSemua}
+                          className="rounded-lg border border-outline-variant bg-surface px-3 py-2 font-geist text-label-sm text-on-surface-variant transition-colors hover:bg-surface-container"
+                        >
+                          Pilih Semua
+                        </button>
+                        <button
+                          type="button"
+                          onClick={bersihkanPilihan}
+                          disabled={wChecked.size === 0}
+                          className="rounded-lg border border-outline-variant bg-surface px-3 py-2 font-geist text-label-sm text-on-surface-variant transition-colors hover:bg-surface-container disabled:opacity-50"
+                        >
+                          Bersihkan
+                        </button>
+                      </div>
+                      {wRangeMsg && (
+                        <p className="font-inter text-label-sm text-text-muted">{wRangeMsg}</p>
+                      )}
+                    </div>
                   )}
 
                   {!wSesiLoading && wSesiDetail.length > 0 && (
