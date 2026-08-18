@@ -1,0 +1,1 @@
+ALTER TABLE `kelas` ADD `navigator_column_map` text;

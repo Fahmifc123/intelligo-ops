@@ -17,9 +17,20 @@ type Sesi = { id: string; kelasId: string; status: string };
 type PreviewResult = {
   sheetId?: string;
   headerRow?: string[];
-  detected?: Record<string, number>;
-  error?: string;
+  detected?: Record<string, number> | null;
+  needsManualMapping?: boolean;
+  error?: string | null;
 };
+
+// Field yang bisa dipetakan ke kolom sheet. Pertemuan & Trainer wajib -
+// tanpa dua itu sync gak bisa jalan.
+const MAPPABLE_FIELDS = [
+  { key: "pertemuan", label: "Pertemuan ke-", wajib: true },
+  { key: "trainer", label: "Trainer", wajib: true },
+  { key: "tanggal", label: "Tanggal", wajib: false },
+  { key: "materi", label: "Judul materi", wajib: false },
+  { key: "record", label: "Link record", wajib: false },
+];
 
 const TIPE_LABEL: Record<string, string> = {
   bootcamp: "Bootcamp",
@@ -40,6 +51,10 @@ export default function KelasPage() {
   const [syncingId, setSyncingId] = useState<string | null>(null);
   const [syncMsg, setSyncMsg] = useState<string | null>(null);
   const [preview, setPreview] = useState<PreviewResult | null>(null);
+  // Mapping kolom manual: { pertemuan: 1, trainer: 11, ... }. Dipakai kalau
+  // auto-detect gagal, atau kalau admin mau override hasil deteksi.
+  const [columnMap, setColumnMap] = useState<Record<string, number>>({});
+  const [showManualMap, setShowManualMap] = useState(false);
   const [checking, setChecking] = useState(false);
   const [showForm, setShowForm] = useState(false);
 
@@ -68,22 +83,38 @@ export default function KelasPage() {
     return { total, selesai };
   }
 
-  async function checkLink() {
+  async function checkLink(mapOverride?: Record<string, number>) {
     if (!sheetLink.trim()) return;
     setChecking(true);
     setPreview(null);
     try {
+      const map = mapOverride ?? columnMap;
       const res = await fetch("/api/sync/navigator/preview", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ link: sheetLink }),
+        body: JSON.stringify({
+          link: sheetLink,
+          columnMap: Object.keys(map).length ? map : undefined,
+        }),
       });
       const data = await res.json();
       setPreview(data);
+      // Auto-detect gagal -> langsung buka form mapping manual, biar admin
+      // gak perlu nebak-nebak harus ngapain.
+      if (data.needsManualMapping) setShowManualMap(true);
     } catch (e) {
       setPreview({ error: e instanceof Error ? e.message : String(e) });
     }
     setChecking(false);
+  }
+
+  function setKolom(field: string, idx: string) {
+    const next = { ...columnMap };
+    if (idx === "") delete next[field];
+    else next[field] = Number(idx);
+    setColumnMap(next);
+    // Re-validate langsung pakai mapping baru biar admin lihat hasilnya seketika.
+    if (next.pertemuan !== undefined && next.trainer !== undefined) checkLink(next);
   }
 
   async function addKelas(e: React.FormEvent) {
@@ -93,7 +124,13 @@ export default function KelasPage() {
     const res = await fetch("/api/kelas", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ nama, tipe, trainerId, navigatorSheetId: sheetLink || undefined }),
+      body: JSON.stringify({
+        nama,
+        tipe,
+        trainerId,
+        navigatorSheetId: sheetLink || undefined,
+        navigatorColumnMap: Object.keys(columnMap).length ? columnMap : undefined,
+      }),
     });
     const newKelas = await res.json();
     if (rate) {
@@ -107,6 +144,8 @@ export default function KelasPage() {
     setRate("");
     setSheetLink("");
     setPreview(null);
+    setColumnMap({});
+    setShowManualMap(false);
     setLoading(false);
     load();
   }
@@ -251,11 +290,14 @@ export default function KelasPage() {
                 onChange={(e) => {
                   setSheetLink(e.target.value);
                   setPreview(null);
+                  // Link ganti -> mapping kolom lama gak relevan lagi.
+                  setColumnMap({});
+                  setShowManualMap(false);
                 }}
               />
               <button
                 type="button"
-                onClick={checkLink}
+                onClick={() => checkLink()}
                 disabled={!sheetLink.trim() || checking}
                 className="whitespace-nowrap rounded-lg border border-outline-variant bg-surface-container-low px-5 py-2 font-geist text-label-md text-primary transition-colors hover:bg-surface-container disabled:opacity-50"
               >
@@ -265,10 +307,66 @@ export default function KelasPage() {
 
             {preview && preview.error && (
               <p className="rounded-lg border border-error-container bg-error-container/40 p-3 font-inter text-body-sm text-on-error-container">
-                Gagal: {preview.error}. Pastikan sheet-nya punya kolom &quot;Pertemuan&quot; dan
-                &quot;Trainer&quot;, dan sheet-nya udah di-share &quot;Anyone with the link can
-                view&quot;.
+                {preview.error}
               </p>
+            )}
+
+            {/* Mapping kolom manual - muncul otomatis kalau auto-detect gagal,
+                atau bisa dibuka manual buat ngoreksi hasil deteksi. */}
+            {preview && preview.headerRow && preview.headerRow.length > 0 && (
+              <div className="flex flex-col gap-stack-sm">
+                <button
+                  type="button"
+                  onClick={() => setShowManualMap((v) => !v)}
+                  className="flex w-fit items-center gap-1.5 font-geist text-label-sm text-text-muted transition-colors hover:text-primary"
+                >
+                  <span className="material-symbols-outlined text-[16px]">tune</span>
+                  {showManualMap ? "Tutup pengaturan kolom" : "Atur kolom manual"}
+                </button>
+
+                {showManualMap && (
+                  <div className="flex flex-col gap-stack-md rounded-lg border border-outline-variant bg-surface-container-low p-4">
+                    <p className="font-inter text-body-sm text-text-muted">
+                      Pilih kolom di sheet yang cocok buat tiap data. Kolom bertanda{" "}
+                      <span className="text-error">*</span> wajib diisi.
+                    </p>
+                    <div className="grid grid-cols-1 gap-stack-md sm:grid-cols-2">
+                      {MAPPABLE_FIELDS.map((f) => (
+                        <div key={f.key} className="flex flex-col gap-1.5">
+                          <label
+                            htmlFor={`map-${f.key}`}
+                            className="font-geist text-label-sm text-text-muted"
+                          >
+                            {f.label}
+                            {f.wajib && <span className="text-error"> *</span>}
+                          </label>
+                          <select
+                            id={`map-${f.key}`}
+                            className={inputClass}
+                            value={
+                              columnMap[f.key] !== undefined
+                                ? String(columnMap[f.key])
+                                : preview.detected?.[f.key] !== undefined
+                                  ? String(preview.detected[f.key])
+                                  : ""
+                            }
+                            onChange={(e) => setKolom(f.key, e.target.value)}
+                          >
+                            <option value="">— pilih kolom —</option>
+                            {preview.headerRow?.map((h, i) =>
+                              h ? (
+                                <option key={i} value={i}>
+                                  {h}
+                                </option>
+                              ) : null
+                            )}
+                          </select>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
             )}
             {preview && preview.detected && (
               <div className="rounded-lg border border-success/30 bg-success/10 p-3 font-inter text-body-sm text-primary">

@@ -37,6 +37,10 @@ export async function POST(req: NextRequest) {
       trainerId: body.trainerId,
       tanggalMulai: body.tanggalMulai ?? null,
       navigatorSheetId: body.navigatorSheetId ? extractSheetId(body.navigatorSheetId) : null,
+      // Mapping kolom manual disimpan sebagai JSON string; null = pakai auto-detect.
+      navigatorColumnMap: body.navigatorColumnMap
+        ? JSON.stringify(body.navigatorColumnMap)
+        : null,
     })
     .returning();
   return NextResponse.json(row, { status: 201 });

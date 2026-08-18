@@ -19,6 +19,10 @@ export const kelas = sqliteTable("kelas", {
   // Kalau diisi, sesi kelas ini di-sync otomatis dari sheet, bukan input manual.
   navigatorSheetId: text("navigator_sheet_id"),
   navigatorLastSyncedAt: text("navigator_last_synced_at"),
+  // Mapping kolom manual, JSON { "pertemuan": 1, "trainer": 11, ... } -
+  // nilainya index kolom di header row sheet. Cuma diisi kalau nama kolom
+  // di sheet gak ketebak auto-detect; kalau null, deteksi otomatis dipakai.
+  navigatorColumnMap: text("navigator_column_map"),
   createdAt: text("created_at").default(sql`(current_timestamp)`),
 });
 

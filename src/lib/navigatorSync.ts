@@ -64,18 +64,69 @@ async function fetchSheetRows(sheetId: string, tabName = DEFAULT_TAB_NAME): Prom
   return rows;
 }
 
-function detectColumns(headerRow: string[]): Record<string, number> {
+/**
+ * Deteksi kolom dari header row. Dicoba 3 tahap makin longgar, biar
+ * variasi penamaan antar sheet ("Pertemuan" vs "Pertemuan ke" vs
+ * "Judul Materi") tetap kebaca tanpa perlu setting manual:
+ *   1. exact match  - "pertemuan" === "pertemuan"
+ *   2. prefix match - "pertemuan ke" diawali "pertemuan"
+ *   3. contains     - "judul materi" mengandung "materi"
+ * Kolom yang udah kepakai gak dipakai ulang buat field lain.
+ *
+ * `override` (opsional) = mapping manual dari user, formatnya
+ * { pertemuan: 3, trainer: 12 }. Kalau ada, itu yang menang - dipakai
+ * buat sheet yang nama kolomnya gak ketebak sama sekali.
+ */
+export function detectColumns(
+  headerRow: string[],
+  override?: Record<string, number> | null
+): Record<string, number> {
   const normalized = headerRow.map((h) => (h || "").toString().trim().toLowerCase());
   const map: Record<string, number> = {};
+  const used = new Set<number>();
+
+  // Mapping manual dipasang duluan biar auto-detect gak nimpa pilihan user.
+  if (override) {
+    for (const [field, idx] of Object.entries(override)) {
+      if (typeof idx === "number" && idx >= 0 && idx < headerRow.length) {
+        map[field] = idx;
+        used.add(idx);
+      }
+    }
+  }
 
   for (const [field, aliases] of Object.entries(HEADER_ALIASES)) {
-    const idx = normalized.findIndex((h) => aliases.includes(h));
-    if (idx !== -1) map[field] = idx;
+    if (map[field] !== undefined) continue; // udah di-override manual
+
+    let idx = normalized.findIndex((h, i) => !used.has(i) && aliases.includes(h));
+    if (idx === -1) {
+      idx = normalized.findIndex(
+        (h, i) => !used.has(i) && h && aliases.some((a) => h.startsWith(a))
+      );
+    }
+    if (idx === -1) {
+      idx = normalized.findIndex(
+        (h, i) => !used.has(i) && h && aliases.some((a) => h.includes(a))
+      );
+    }
+
+    if (idx !== -1) {
+      map[field] = idx;
+      used.add(idx);
+    }
   }
 
   if (map.pertemuan === undefined || map.trainer === undefined) {
+    const kurang = [
+      map.pertemuan === undefined ? '"Pertemuan"' : null,
+      map.trainer === undefined ? '"Trainer"' : null,
+    ]
+      .filter(Boolean)
+      .join(" dan ");
     throw new Error(
-      `Sheet ini gak punya kolom "Pertemuan" dan/atau "Trainer" di header row. Ditemukan: ${headerRow.join(", ")}`
+      `Kolom ${kurang} gak ketemu otomatis di sheet ini. Kolom yang ada: ${headerRow
+        .filter(Boolean)
+        .join(", ")}. Pilih kolomnya manual lewat "Atur kolom manual".`
     );
   }
 
@@ -135,15 +186,44 @@ function excelSerialToDate(value: unknown): string | null {
   return null;
 }
 
-export async function previewNavigatorSheet(sheetIdOrUrl: string) {
+/** Field yang bisa di-map, buat nampilin form mapping manual di UI. */
+export const MAPPABLE_FIELDS = [
+  { key: "pertemuan", label: "Pertemuan ke-", wajib: true },
+  { key: "trainer", label: "Trainer", wajib: true },
+  { key: "tanggal", label: "Tanggal", wajib: false },
+  { key: "materi", label: "Judul materi", wajib: false },
+  { key: "record", label: "Link record", wajib: false },
+] as const;
+
+/**
+ * Cek sheet sebelum disimpan. Beda dari sync beneran: kalau auto-detect
+ * gagal, ini TETAP balikin headerRow-nya (dengan detected: null + pesan
+ * error) - biar UI bisa nampilin dropdown "pilih kolom manual" pakai
+ * nama kolom asli dari sheet itu, bukan cuma mentok di pesan error.
+ */
+export async function previewNavigatorSheet(
+  sheetIdOrUrl: string,
+  override?: Record<string, number> | null
+) {
   const sheetId = extractSheetId(sheetIdOrUrl);
   const rows = await fetchSheetRows(sheetId);
   if (rows.length === 0) {
     throw new Error("Sheet kosong atau gak kebaca.");
   }
   const headerRow = rows[0];
-  const detected = detectColumns(headerRow); // throws kalau Pertemuan/Trainer gak ada
-  return { sheetId, headerRow, detected };
+
+  try {
+    const detected = detectColumns(headerRow, override);
+    return { sheetId, headerRow, detected, needsManualMapping: false, error: null };
+  } catch (e) {
+    return {
+      sheetId,
+      headerRow,
+      detected: null,
+      needsManualMapping: true,
+      error: e instanceof Error ? e.message : String(e),
+    };
+  }
 }
 
 export type SyncResult = {
@@ -175,7 +255,17 @@ export async function syncKelasFromNavigator(kelasId: string): Promise<SyncResul
   }
 
   const headerRow = allRows[0];
-  const cols = detectColumns(headerRow);
+  // Mapping manual (kalau kelas ini pernah di-set) menang atas auto-detect.
+  let override: Record<string, number> | null = null;
+  if (k.navigatorColumnMap) {
+    try {
+      override = JSON.parse(k.navigatorColumnMap);
+    } catch {
+      // JSON rusak - abaikan, balik ke auto-detect daripada gagal total.
+      override = null;
+    }
+  }
+  const cols = detectColumns(headerRow, override);
   const rows = allRows.slice(1);
 
   const result: SyncResult = {
