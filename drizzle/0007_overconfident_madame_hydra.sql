@@ -1,0 +1,1 @@
+ALTER TABLE `kelas` ADD `pola_pembayaran` text DEFAULT 'akhir' NOT NULL;

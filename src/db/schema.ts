@@ -18,6 +18,11 @@ export const kelas = sqliteTable("kelas", {
   // jadi default buat sesi yang trainer-nya gak diisi.
   trainerId: text("trainer_id").notNull().references(() => trainer.id),
   tanggalMulai: text("tanggal_mulai"),
+  // Pola pembayaran fee trainer kelas ini - murni informasi/catatan, gak
+  // dipakai buat ngitung apa-apa (perhitungan fee tetap dari feeRule +
+  // status payslip seperti biasa). "akhir" = dibayar sekali pas kelas
+  // kelar, "bulanan" = diakumulasi & dibayar tiap bulan berjalan.
+  polaPembayaran: text("pola_pembayaran").notNull().default("akhir"), // akhir | bulanan
   // ID Google Sheet Navigator kelas ini (dari URL sheet: /d/{INI_ID}/edit).
   // Kalau diisi, sesi kelas ini di-sync otomatis dari sheet, bukan input manual.
   navigatorSheetId: text("navigator_sheet_id"),

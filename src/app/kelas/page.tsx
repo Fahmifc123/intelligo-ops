@@ -27,6 +27,9 @@ type Kelas = {
   trainerId: string;
   trainerNama: string | null;
   tanggalMulai: string | null;
+  // Murni catatan admin - "akhir" (sekali pas kelas kelar) atau "bulanan"
+  // (diakumulasi tiap bulan). Gak dipakai buat ngitung fee apapun.
+  polaPembayaran: "akhir" | "bulanan";
   navigatorSheetId: string | null;
   navigatorLastSyncedAt: string | null;
   trainers: TrainerRingkas[];
@@ -85,6 +88,7 @@ export default function KelasPage() {
   // Kelas yang lagi diedit. null = form dalam mode "tambah baru".
   const [editId, setEditId] = useState<string | null>(null);
   const [tanggalMulai, setTanggalMulai] = useState("");
+  const [polaPembayaran, setPolaPembayaran] = useState<"akhir" | "bulanan">("akhir");
   const [formMsg, setFormMsg] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
@@ -178,6 +182,7 @@ export default function KelasPage() {
     setFeePerTrainer({});
     setTrainerTambahan([]);
     setTanggalMulai("");
+    setPolaPembayaran("akhir");
     setSheetLink("");
     setPreview(null);
     setColumnMap({});
@@ -192,6 +197,7 @@ export default function KelasPage() {
     setTipe(k.tipe);
     setTrainerId(k.trainerId);
     setTanggalMulai(k.tanggalMulai ?? "");
+    setPolaPembayaran(k.polaPembayaran ?? "akhir");
     // Sheet disimpan sebagai ID, bukan URL penuh. Ditampilkan apa adanya -
     // extractSheetId di server nerima dua-duanya, jadi user boleh paste
     // link penuh buat nggantinya.
@@ -271,6 +277,7 @@ export default function KelasPage() {
             tipe,
             trainerId,
             tanggalMulai: tanggalMulai || null,
+            polaPembayaran,
             navigatorSheetId: sheetLink || null,
             // Cuma kirim mapping kalau user emang nyetel ulang di sesi edit
             // ini; kalau nggak, mapping lama di DB dibiarin apa adanya.
@@ -293,6 +300,7 @@ export default function KelasPage() {
             tipe,
             trainerId,
             tanggalMulai: tanggalMulai || undefined,
+            polaPembayaran,
             navigatorSheetId: sheetLink || undefined,
             navigatorColumnMap: Object.keys(columnMap).length ? columnMap : undefined,
           }),
@@ -519,6 +527,23 @@ export default function KelasPage() {
                 value={tanggalMulai}
                 onChange={(e) => setTanggalMulai(e.target.value)}
               />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label
+                htmlFor="kelas-pola-bayar"
+                className="font-geist text-label-sm text-text-muted"
+              >
+                Pembayaran fee trainer
+              </label>
+              <select
+                id="kelas-pola-bayar"
+                className={inputClass}
+                value={polaPembayaran}
+                onChange={(e) => setPolaPembayaran(e.target.value as "akhir" | "bulanan")}
+              >
+                <option value="akhir">Di akhir kelas</option>
+                <option value="bulanan">Akumulasi tiap bulan</option>
+              </select>
             </div>
 
           </div>
@@ -856,6 +881,14 @@ export default function KelasPage() {
                     event
                   </span>
                   {total > 0 ? `${total} sesi terdaftar` : "Belum ada sesi"}
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="material-symbols-outlined text-[18px] text-outline">
+                    payments
+                  </span>
+                  {k.polaPembayaran === "bulanan"
+                    ? "Fee diakumulasi tiap bulan"
+                    : "Fee dibayar di akhir kelas"}
                 </div>
                 {k.navigatorLastSyncedAt && (
                   <div className="flex items-center gap-2 text-label-sm text-text-muted">

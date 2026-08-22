@@ -21,6 +21,7 @@ type KelasDetail = {
   trainerId: string;
   trainerNama: string | null;
   tanggalMulai: string | null;
+  polaPembayaran: "akhir" | "bulanan";
   navigatorSheetId: string | null;
   navigatorLastSyncedAt: string | null;
   trainers: TrainerRingkas[];
@@ -195,6 +196,11 @@ export default function KelasDetailPage() {
               Mulai {kelas.tanggalMulai}
             </div>
           )}
+          <div className="flex items-center gap-2 font-inter text-body-sm text-text-muted">
+            <span className="material-symbols-outlined text-[18px] text-outline">payments</span>
+            Fee dibayar{" "}
+            {kelas.polaPembayaran === "bulanan" ? "diakumulasi tiap bulan" : "di akhir kelas"}
+          </div>
         </div>
         {totalSesi > 0 && (
           <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-surface-container-high">

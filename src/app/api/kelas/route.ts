@@ -17,6 +17,7 @@ export async function GET() {
       tanggalMulai: kelas.tanggalMulai,
       trainerId: kelas.trainerId,
       trainerNama: trainer.nama,
+      polaPembayaran: kelas.polaPembayaran,
       navigatorSheetId: kelas.navigatorSheetId,
       navigatorLastSyncedAt: kelas.navigatorLastSyncedAt,
     })
@@ -160,11 +161,19 @@ export async function GET() {
   return NextResponse.json(hasil);
 }
 
+const VALID_POLA_PEMBAYARAN = ["akhir", "bulanan"];
+
 export async function POST(req: NextRequest) {
   const body = await req.json();
   if (!body.nama || !body.tipe || !body.trainerId) {
     return NextResponse.json(
       { error: "nama, tipe, trainerId wajib diisi" },
+      { status: 400 }
+    );
+  }
+  if (body.polaPembayaran !== undefined && !VALID_POLA_PEMBAYARAN.includes(body.polaPembayaran)) {
+    return NextResponse.json(
+      { error: `polaPembayaran harus salah satu dari: ${VALID_POLA_PEMBAYARAN.join(", ")}` },
       { status: 400 }
     );
   }
@@ -175,6 +184,9 @@ export async function POST(req: NextRequest) {
       tipe: body.tipe,
       trainerId: body.trainerId,
       tanggalMulai: body.tanggalMulai ?? null,
+      // Murni catatan buat admin, bukan dipakai buat ngitung fee. Default
+      // "akhir" (dibayar sekali pas kelas kelar) kalau gak dipilih.
+      polaPembayaran: body.polaPembayaran ?? "akhir",
       navigatorSheetId: body.navigatorSheetId ? extractSheetId(body.navigatorSheetId) : null,
       // Mapping kolom manual disimpan sebagai JSON string; null = pakai auto-detect.
       navigatorColumnMap: body.navigatorColumnMap

@@ -5,6 +5,7 @@ import { eq } from "drizzle-orm";
 import { extractSheetId } from "@/lib/navigatorSync";
 
 const VALID_TIPE = ["bootcamp", "private", "mbc", "corporate"];
+const VALID_POLA_PEMBAYARAN = ["akhir", "bulanan"];
 
 type FeeInput = {
   trainerId?: string | null;
@@ -87,6 +88,7 @@ export async function GET(
       trainerId: kelas.trainerId,
       trainerNama: trainer.nama,
       tanggalMulai: kelas.tanggalMulai,
+      polaPembayaran: kelas.polaPembayaran,
       navigatorSheetId: kelas.navigatorSheetId,
       navigatorColumnMap: kelas.navigatorColumnMap,
       navigatorLastSyncedAt: kelas.navigatorLastSyncedAt,
@@ -169,6 +171,15 @@ export async function PATCH(
       { status: 400 }
     );
   }
+  if (
+    body.polaPembayaran !== undefined &&
+    !VALID_POLA_PEMBAYARAN.includes(body.polaPembayaran)
+  ) {
+    return NextResponse.json(
+      { error: `polaPembayaran harus salah satu dari: ${VALID_POLA_PEMBAYARAN.join(", ")}` },
+      { status: 400 }
+    );
+  }
   // Trainer dicek beneran ada - kalau nggak, insert-nya bakal kena
   // FOREIGN KEY constraint dengan pesan yang gak kebaca sama user.
   if (body.trainerId !== undefined) {
@@ -181,6 +192,7 @@ export async function PATCH(
     ...(body.tipe !== undefined && { tipe: body.tipe }),
     ...(body.trainerId !== undefined && { trainerId: body.trainerId }),
     ...(body.tanggalMulai !== undefined && { tanggalMulai: body.tanggalMulai || null }),
+    ...(body.polaPembayaran !== undefined && { polaPembayaran: body.polaPembayaran }),
     // String kosong = user ngosongin field-nya, artinya lepas sheet-nya.
     ...(body.navigatorSheetId !== undefined && {
       navigatorSheetId: body.navigatorSheetId
