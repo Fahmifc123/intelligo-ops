@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
-import { kelas, trainer, sesi, feeRule } from "@/db/schema";
+import { kelas, trainer, sesi, feeRule, payslip, payslipItem } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { extractSheetId } from "@/lib/navigatorSync";
 import { hitungRatePerSesi, trainerEfektif } from "@/lib/feeQuery";
@@ -33,8 +33,13 @@ export async function GET() {
         kelasId: sesi.kelasId,
         status: sesi.status,
         trainerId: sesi.trainerId,
+        // Status payslip yang nampung sesi ini (null = belum masuk payslip
+        // manapun). Dipakai buat nentuin fee kelas udah lunas atau belum.
+        payslipStatus: payslip.status,
       })
-      .from(sesi),
+      .from(sesi)
+      .leftJoin(payslipItem, eq(payslipItem.sesiId, sesi.id))
+      .leftJoin(payslip, eq(payslip.id, payslipItem.payslipId)),
     db.select().from(feeRule),
     db.select({ id: trainer.id, nama: trainer.nama }).from(trainer),
   ]);
@@ -52,6 +57,7 @@ export async function GET() {
     jumlahSesi: number;
     sesiSelesai: number;
     totalFee: number;
+    feeLunas: number;
   };
 
   const perKelas: Record<string, Record<string, Ringkas>> = {};
@@ -78,6 +84,7 @@ export async function GET() {
         jumlahSesi: 0,
         sesiSelesai: 0,
         totalFee: 0,
+        feeLunas: 0,
       };
     }
 
@@ -87,7 +94,9 @@ export async function GET() {
     // /api/fee, biar angka di dua halaman gak beda.
     if (s.status === "selesai") {
       acc.sesiSelesai += 1;
-      acc.totalFee += rateMap[s.id] ?? 0;
+      const fee = rateMap[s.id] ?? 0;
+      acc.totalFee += fee;
+      if (s.payslipStatus === "lunas") acc.feeLunas += fee;
     }
   }
 
@@ -110,6 +119,7 @@ export async function GET() {
         jumlahSesi: 0,
         sesiSelesai: 0,
         totalFee: 0,
+        feeLunas: 0,
       };
     }
 
@@ -117,10 +127,33 @@ export async function GET() {
       (a, b) => Number(b.utama) - Number(a.utama) || b.jumlahSesi - a.jumlahSesi
     );
 
+    const totalFeeKelas = trainers.reduce((a, t) => a + t.totalFee, 0);
+    const feeLunasKelas = trainers.reduce((a, t) => a + t.feeLunas, 0);
+
+    const totalSesi = trainers.reduce((a, t) => a + t.jumlahSesi, 0);
+    const sesiSelesai = trainers.reduce((a, t) => a + t.sesiSelesai, 0);
+
+    // Status kelas:
+    //   persiapan - belum ada sesi sama sekali
+    //   aktif     - masih ada sesi yang belum diajar
+    //   selesai   - semua sesi udah diajar, tapi fee belum lunas semua
+    //   lunas     - semua sesi diajar DAN semua fee-nya udah dibayar
+    //
+    // Kelas tanpa aturan fee (totalFeeKelas 0) yang sesinya udah kelar
+    // dianggap lunas - gak ada yang perlu dibayar, jadi nahan dia di
+    // "selesai" selamanya cuma bikin bingung.
+    let status: "persiapan" | "aktif" | "selesai" | "lunas";
+    if (totalSesi === 0) status = "persiapan";
+    else if (sesiSelesai < totalSesi) status = "aktif";
+    else if (totalFeeKelas > 0 && feeLunasKelas < totalFeeKelas) status = "selesai";
+    else status = "lunas";
+
     return {
       ...k,
       trainers,
-      totalFeeKelas: trainers.reduce((a, t) => a + t.totalFee, 0),
+      totalFeeKelas,
+      feeLunasKelas,
+      status,
     };
   });
 

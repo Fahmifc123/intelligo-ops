@@ -14,6 +14,7 @@ type TrainerRingkas = {
   jumlahSesi: number;
   sesiSelesai: number;
   totalFee: number;
+  feeLunas: number;
 };
 
 type Kelas = {
@@ -27,6 +28,8 @@ type Kelas = {
   navigatorLastSyncedAt: string | null;
   trainers: TrainerRingkas[];
   totalFeeKelas: number;
+  feeLunasKelas: number;
+  status: "persiapan" | "aktif" | "selesai" | "lunas";
 };
 
 type Sesi = { id: string; kelasId: string; status: string };
@@ -59,6 +62,36 @@ function rupiah(v: number): string {
   if (v >= 1000) return `Rp ${Math.round(v / 1000).toLocaleString("id-ID")}rb`;
   return `Rp ${v.toLocaleString("id-ID")}`;
 }
+
+/**
+ * Badge status kelas. Dua status "selesai" sengaja nyebut fee eksplisit -
+ * "Selesai" doang ambigu antara "udah kelar ngajar" dan "udah dibayar".
+ */
+const STATUS_BADGE: Record<
+  string,
+  { label: string; kelas: string; ikon: string }
+> = {
+  persiapan: {
+    label: "Persiapan",
+    kelas: "bg-warning/10 text-warning",
+    ikon: "schedule",
+  },
+  aktif: {
+    label: "Aktif",
+    kelas: "bg-success/10 text-success",
+    ikon: "play_circle",
+  },
+  selesai: {
+    label: "Selesai · fee belum lunas",
+    kelas: "bg-secondary-container/20 text-secondary",
+    ikon: "payments",
+  },
+  lunas: {
+    label: "Selesai · fee lunas",
+    kelas: "bg-surface-container text-text-muted",
+    ikon: "task_alt",
+  },
+};
 
 const TIPE_LABEL: Record<string, string> = {
   bootcamp: "Bootcamp",
@@ -793,9 +826,10 @@ export default function KelasPage() {
       <div className="grid grid-cols-1 gap-stack-md md:grid-cols-2 lg:grid-cols-3">
         {kelasList.map((k) => {
           const { total, selesai } = progressOf(k.id);
-          // "Aktif" kalau udah ada sesi yang jalan, "Persiapan" kalau belum ada sesi sama sekali.
-          const aktif = total > 0;
           const pct = total > 0 ? Math.round((selesai / total) * 100) : 0;
+          // Status dihitung di server (lihat /api/kelas) biar aturannya
+          // cuma ada di satu tempat. Fallback buat data lama tanpa field ini.
+          const badge = STATUS_BADGE[k.status] ?? STATUS_BADGE.persiapan;
 
           return (
             <div
@@ -804,11 +838,12 @@ export default function KelasPage() {
             >
               <div className="mb-3 flex items-start justify-between gap-2">
                 <span
-                  className={`inline-flex items-center rounded-full px-2.5 py-1 font-geist text-label-sm ${
-                    aktif ? "bg-success/10 text-success" : "bg-warning/10 text-warning"
-                  }`}
+                  className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 font-geist text-label-sm ${badge.kelas}`}
                 >
-                  {aktif ? "Aktif" : "Persiapan"}
+                  <span className="material-symbols-outlined text-[14px]">
+                    {badge.ikon}
+                  </span>
+                  {badge.label}
                 </span>
                 <span className="inline-flex items-center rounded-full bg-surface-container px-2.5 py-1 font-geist text-label-sm text-on-surface-variant">
                   {TIPE_LABEL[k.tipe] ?? k.tipe}
@@ -900,6 +935,15 @@ export default function KelasPage() {
                       </span>
                     </div>
                   ))}
+
+                  {/* Sisa yang belum dibayar - bikin badge "fee belum lunas"
+                      bisa ditelusuri, bukan cuma label. */}
+                  {k.totalFeeKelas > k.feeLunasKelas && (
+                    <p className="font-inter text-label-sm text-secondary">
+                      Belum dibayar: {rupiah(k.totalFeeKelas - k.feeLunasKelas)}
+                      {k.feeLunasKelas > 0 && ` dari ${rupiah(k.totalFeeKelas)}`}
+                    </p>
+                  )}
                 </div>
               )}
 
