@@ -48,6 +48,10 @@ export default function KelasPage() {
   const [tipe, setTipe] = useState("bootcamp");
   const [trainerId, setTrainerId] = useState("");
   const [rate, setRate] = useState("");
+  // "flat" = bayar per sesi, "paket" = total kelas dikunci & dibagi rata.
+  const [skema, setSkema] = useState<"flat" | "paket">("flat");
+  const [totalPaket, setTotalPaket] = useState("");
+  const [targetSesi, setTargetSesi] = useState("");
   const [sheetLink, setSheetLink] = useState("");
   const [loading, setLoading] = useState(false);
   const [syncingId, setSyncingId] = useState<string | null>(null);
@@ -130,6 +134,9 @@ export default function KelasPage() {
     setTipe("bootcamp");
     setTrainerId(trainers[0]?.id ?? "");
     setRate("");
+    setSkema("flat");
+    setTotalPaket("");
+    setTargetSesi("");
     setTanggalMulai("");
     setSheetLink("");
     setPreview(null);
@@ -155,13 +162,19 @@ export default function KelasPage() {
     setFormMsg(null);
     setShowForm(true);
 
-    // Rate ada di tabel terpisah, jadi diambil belakangan.
+    // Fee ada di tabel terpisah, jadi diambil belakangan.
     setRate("");
+    setSkema("flat");
+    setTotalPaket("");
+    setTargetSesi("");
     try {
       const res = await fetch(`/api/kelas/${k.id}`);
       if (res.ok) {
         const detail = await res.json();
+        setSkema(detail.skema === "paket" ? "paket" : "flat");
         if (detail.ratePerSesi !== null) setRate(String(detail.ratePerSesi));
+        if (detail.totalPaket !== null) setTotalPaket(String(detail.totalPaket));
+        if (detail.targetSesi !== null) setTargetSesi(String(detail.targetSesi));
       }
     } catch {
       // Rate gagal keambil bukan alasan buat batalin edit - field-nya
@@ -191,7 +204,10 @@ export default function KelasPage() {
             // Cuma kirim mapping kalau user emang nyetel ulang di sesi edit
             // ini; kalau nggak, mapping lama di DB dibiarin apa adanya.
             ...(Object.keys(columnMap).length ? { navigatorColumnMap: columnMap } : {}),
-            ratePerSesi: rate === "" ? null : Number(rate),
+            skema,
+            ...(skema === "paket"
+              ? { totalPaket: Number(totalPaket), targetSesi: Number(targetSesi) }
+              : { ratePerSesi: rate === "" ? null : Number(rate) }),
           }),
         });
         const data = await res.json();
@@ -219,12 +235,39 @@ export default function KelasPage() {
           setLoading(false);
           return;
         }
-        if (rate) {
-          await fetch("/api/fee-rule", {
+        // Fee disimpan di tabel terpisah, jadi baru dikirim setelah
+        // kelasnya jadi dan kita punya id-nya.
+        const feeBody =
+          skema === "paket"
+            ? totalPaket && targetSesi
+              ? {
+                  kelasId: newKelas.id,
+                  skema: "paket",
+                  totalPaket: Number(totalPaket),
+                  targetSesi: Number(targetSesi),
+                }
+              : null
+            : rate
+              ? { kelasId: newKelas.id, skema: "flat", ratePerSesi: Number(rate) }
+              : null;
+
+        if (feeBody) {
+          const feeRes = await fetch("/api/fee-rule", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ kelasId: newKelas.id, ratePerSesi: Number(rate) }),
+            body: JSON.stringify(feeBody),
           });
+          if (!feeRes.ok) {
+            // Kelasnya udah kebikin, jadi jangan dianggap gagal total -
+            // kasih tau aja fee-nya belum keset biar bisa dibenerin lewat Edit.
+            const fe = await feeRes.json();
+            setFormMsg(
+              `Kelas dibuat, tapi fee gagal disimpan: ${fe.error ?? "error"}. Set lewat tombol Edit.`
+            );
+            setLoading(false);
+            load();
+            return;
+          }
         }
       }
 
@@ -400,17 +443,18 @@ export default function KelasPage() {
               </select>
             </div>
             <div className="flex flex-col gap-1.5">
-              <label htmlFor="kelas-rate" className="font-geist text-label-sm text-text-muted">
-                Rate per sesi (Rp, opsional)
+              <label htmlFor="kelas-skema" className="font-geist text-label-sm text-text-muted">
+                Skema fee
               </label>
-              <input
-                id="kelas-rate"
+              <select
+                id="kelas-skema"
                 className={inputClass}
-                placeholder="150000"
-                type="number"
-                value={rate}
-                onChange={(e) => setRate(e.target.value)}
-              />
+                value={skema}
+                onChange={(e) => setSkema(e.target.value as "flat" | "paket")}
+              >
+                <option value="flat">Per sesi</option>
+                <option value="paket">Total paket</option>
+              </select>
             </div>
             <div className="flex flex-col gap-1.5">
               <label
@@ -427,7 +471,92 @@ export default function KelasPage() {
                 onChange={(e) => setTanggalMulai(e.target.value)}
               />
             </div>
+
+            {skema === "flat" ? (
+              <div className="flex flex-col gap-1.5">
+                <label htmlFor="kelas-rate" className="font-geist text-label-sm text-text-muted">
+                  Rate per sesi (Rp, opsional)
+                </label>
+                <input
+                  id="kelas-rate"
+                  className={inputClass}
+                  placeholder="150000"
+                  type="number"
+                  value={rate}
+                  onChange={(e) => setRate(e.target.value)}
+                />
+              </div>
+            ) : (
+              <>
+                <div className="flex flex-col gap-1.5">
+                  <label
+                    htmlFor="kelas-total"
+                    className="font-geist text-label-sm text-text-muted"
+                  >
+                    Total harga kelas (Rp)
+                  </label>
+                  <input
+                    id="kelas-total"
+                    className={inputClass}
+                    placeholder="10000000"
+                    type="number"
+                    value={totalPaket}
+                    onChange={(e) => setTotalPaket(e.target.value)}
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label
+                    htmlFor="kelas-target"
+                    className="font-geist text-label-sm text-text-muted"
+                  >
+                    Target jumlah sesi
+                  </label>
+                  <input
+                    id="kelas-target"
+                    className={inputClass}
+                    placeholder="15"
+                    type="number"
+                    value={targetSesi}
+                    onChange={(e) => setTargetSesi(e.target.value)}
+                  />
+                </div>
+              </>
+            )}
           </div>
+
+          {/* Preview hitungan - biar admin lihat angkanya sebelum simpan,
+              termasuk penyesuaian pembulatan di sesi terakhir. */}
+          {skema === "paket" && Number(totalPaket) > 0 && Number(targetSesi) > 0 && (
+            <div className="rounded-lg border border-outline-variant bg-surface-container-low p-4 font-inter text-body-sm">
+              {(() => {
+                const total = Number(totalPaket);
+                const n = Number(targetSesi);
+                const dasar = Math.round(total / n);
+                const terakhir = total - dasar * (n - 1);
+                const rp = (v: number) => `Rp ${v.toLocaleString("id-ID")}`;
+                return (
+                  <>
+                    <p className="text-on-surface-variant">
+                      Sesi 1–{n - 1}: <strong>{rp(dasar)}</strong> per sesi
+                      {terakhir !== dasar && (
+                        <>
+                          , sesi ke-{n}: <strong>{rp(terakhir)}</strong>
+                        </>
+                      )}
+                    </p>
+                    <p className="mt-1 text-text-muted">
+                      Total dibayar tetap {rp(total)} — sisa pembulatan diserap di sesi
+                      terakhir.
+                    </p>
+                    <p className="mt-1 text-text-muted">
+                      Kalau jumlah sesi berubah, rate per sesi ikut menyesuaikan supaya
+                      totalnya tetap {rp(total)}.
+                    </p>
+                  </>
+                );
+              })()}
+            </div>
+          )}
 
           <div className="flex flex-col gap-stack-sm">
             <label htmlFor="kelas-sheet" className="font-geist text-label-sm text-text-muted">

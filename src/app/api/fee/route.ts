@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { sesi, kelas, trainer, feeRule, payslipItem, payslip } from "@/db/schema";
 import { eq } from "drizzle-orm";
+import { hitungRatePerSesi } from "@/lib/feeQuery";
 
 // GET /api/fee?periode=2026-08&trainerId=...&kelasId=...  (semua opsional)
 // Rekap fee per trainer dari sesi status "selesai" x rate_per_sesi kelas
@@ -29,6 +30,9 @@ export async function GET(req: NextRequest) {
       trainerId: trainer.id,
       trainerNama: trainer.nama,
       ratePerSesi: feeRule.ratePerSesi,
+      skema: feeRule.skema,
+      totalPaket: feeRule.totalPaket,
+      targetSesi: feeRule.targetSesi,
       payslipStatus: payslip.status,
     })
     .from(sesi)
@@ -38,6 +42,12 @@ export async function GET(req: NextRequest) {
     .leftJoin(payslipItem, eq(payslipItem.sesiId, sesi.id))
     .leftJoin(payslip, eq(payslip.id, payslipItem.payslipId))
     .where(eq(sesi.status, "selesai"));
+
+  // Rate skema paket = totalPaket / SELURUH sesi kelasnya, jadi harus
+  // dihitung sebelum filter periode/trainer/kelas dipasang. Kalau dihitung
+  // setelah filter, rekap bulanan bakal ngebagi total paket cuma ke sesi
+  // bulan itu aja - angkanya jadi kegedean.
+  const rateMap = await hitungRatePerSesi();
 
   if (periode) {
     rows = rows.filter((r) => r.tanggal?.startsWith(periode));
@@ -67,7 +77,8 @@ export async function GET(req: NextRequest) {
 
   for (const r of rows) {
     if (!r.trainerId) continue;
-    const rate = r.ratePerSesi ?? 0;
+    // Dari peta yang dihitung di atas - udah bener buat flat maupun paket.
+    const rate = rateMap[r.sesiId] ?? 0;
     if (!rekap[r.trainerId]) {
       rekap[r.trainerId] = {
         trainerId: r.trainerId,

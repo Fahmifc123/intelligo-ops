@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
-import { payslip, payslipItem, sesi, feeRule } from "@/db/schema";
+import { payslip, payslipItem, sesi } from "@/db/schema";
 import { eq, inArray, ne, and } from "drizzle-orm";
+import { hitungRatePerSesi } from "@/lib/feeQuery";
 
 const VALID_STATUS = ["draft", "belum_dibayar", "lunas"] as const;
 type Status = (typeof VALID_STATUS)[number];
@@ -94,11 +95,12 @@ export async function PUT(
     .select({
       id: sesi.id,
       status: sesi.status,
-      ratePerSesi: feeRule.ratePerSesi,
     })
     .from(sesi)
-    .leftJoin(feeRule, eq(feeRule.kelasId, sesi.kelasId))
     .where(inArray(sesi.id, sesiIds));
+
+  // Sama kayak POST: rate paket butuh jumlah sesi penuh kelasnya.
+  const rateMap = await hitungRatePerSesi();
 
   if (sesiRows.length !== sesiIds.length) {
     return NextResponse.json({ error: "Ada sesiId yang gak ditemukan" }, { status: 400 });
@@ -129,7 +131,7 @@ export async function PUT(
     sesiRows.map((s) => ({
       payslipId: id,
       sesiId: s.id,
-      ratePerSesi: s.ratePerSesi ?? 0,
+      ratePerSesi: rateMap[s.id] ?? 0,
     }))
   );
 

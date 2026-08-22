@@ -32,7 +32,13 @@ export async function GET(
   if (!row) return NextResponse.json({ error: "not found" }, { status: 404 });
 
   const [rule] = await db.select().from(feeRule).where(eq(feeRule.kelasId, id));
-  return NextResponse.json({ ...row, ratePerSesi: rule?.ratePerSesi ?? null });
+  return NextResponse.json({
+    ...row,
+    skema: rule?.skema ?? "flat",
+    ratePerSesi: rule?.ratePerSesi ?? null,
+    totalPaket: rule?.totalPaket ?? null,
+    targetSesi: rule?.targetSesi ?? null,
+  });
 }
 
 // PATCH /api/kelas/[id]
@@ -85,26 +91,83 @@ export async function PATCH(
     .where(eq(kelas.id, id))
     .returning();
 
-  // Rate disimpan di tabel terpisah. Wajib UPDATE baris yang udah ada,
+  // Fee disimpan di tabel terpisah. Wajib UPDATE baris yang udah ada,
   // bukan insert baris baru: /api/fee join ke feeRule tanpa filter, jadi
   // dua baris buat satu kelas bikin tiap sesi kehitung dobel.
   // Payslip yang udah jadi gak ikut berubah - rate-nya udah di-snapshot
   // di payslip_item pas payslip dibuat.
-  if (body.ratePerSesi !== undefined) {
-    const rate = Number(body.ratePerSesi);
-    const [rule] = await db.select().from(feeRule).where(eq(feeRule.kelasId, id));
+  const ubahFee =
+    body.skema !== undefined ||
+    body.ratePerSesi !== undefined ||
+    body.totalPaket !== undefined ||
+    body.targetSesi !== undefined;
 
-    if (body.ratePerSesi === null || body.ratePerSesi === "") {
-      if (rule) await db.delete(feeRule).where(eq(feeRule.kelasId, id));
-    } else if (!Number.isFinite(rate) || rate < 0) {
+  if (ubahFee) {
+    const [rule] = await db.select().from(feeRule).where(eq(feeRule.kelasId, id));
+    const skema = body.skema ?? rule?.skema ?? "flat";
+
+    if (skema !== "flat" && skema !== "paket") {
       return NextResponse.json(
-        { error: "ratePerSesi harus angka >= 0" },
+        { error: "skema harus 'flat' atau 'paket'" },
         { status: 400 }
       );
-    } else if (rule) {
-      await db.update(feeRule).set({ ratePerSesi: rate }).where(eq(feeRule.kelasId, id));
+    }
+
+    const kosong = (v: unknown) => v === null || v === "" || v === undefined;
+
+    if (skema === "paket") {
+      const total = Number(body.totalPaket ?? rule?.totalPaket);
+      const target = Number(body.targetSesi ?? rule?.targetSesi);
+
+      if (!Number.isFinite(total) || total <= 0) {
+        return NextResponse.json(
+          { error: "totalPaket harus angka lebih dari 0" },
+          { status: 400 }
+        );
+      }
+      if (!Number.isFinite(target) || target <= 0) {
+        return NextResponse.json(
+          { error: "targetSesi harus angka lebih dari 0" },
+          { status: 400 }
+        );
+      }
+
+      // ratePerSesi diisi hasil bagi rata sebagai perkiraan. Angka yang
+      // dipakai buat duit beneran selalu dihitung ulang dari totalPaket
+      // (lihat src/lib/fee.ts) - kolom ini cuma biar query lama gak pecah.
+      const perkiraan = Math.round(total / target);
+      const nilai = {
+        ratePerSesi: perkiraan,
+        skema: "paket",
+        totalPaket: total,
+        targetSesi: target,
+      };
+
+      if (rule) await db.update(feeRule).set(nilai).where(eq(feeRule.kelasId, id));
+      else await db.insert(feeRule).values({ kelasId: id, ...nilai });
     } else {
-      await db.insert(feeRule).values({ kelasId: id, ratePerSesi: rate, skema: "flat" });
+      // Skema flat. Rate dikosongin = hapus aturan fee kelas ini.
+      if (body.ratePerSesi !== undefined && kosong(body.ratePerSesi)) {
+        if (rule) await db.delete(feeRule).where(eq(feeRule.kelasId, id));
+      } else {
+        const rate = Number(body.ratePerSesi ?? rule?.ratePerSesi);
+        if (!Number.isFinite(rate) || rate < 0) {
+          return NextResponse.json(
+            { error: "ratePerSesi harus angka >= 0" },
+            { status: 400 }
+          );
+        }
+        // Pindah dari paket ke flat: kolom paket dibersihin biar gak ada
+        // sisa data yang bikin bingung pas dibaca lagi.
+        const nilai = {
+          ratePerSesi: rate,
+          skema: "flat",
+          totalPaket: null,
+          targetSesi: null,
+        };
+        if (rule) await db.update(feeRule).set(nilai).where(eq(feeRule.kelasId, id));
+        else await db.insert(feeRule).values({ kelasId: id, ...nilai });
+      }
     }
   }
 

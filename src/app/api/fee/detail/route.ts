@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { sesi, kelas, trainer, feeRule, payslipItem, payslip } from "@/db/schema";
 import { eq } from "drizzle-orm";
+import { hitungRatePerSesi } from "@/lib/feeQuery";
 
 // GET /api/fee/detail?trainerId=...
 // Detail sesi "selesai" milik satu trainer (dikelompokkan per kelas lewat
@@ -15,6 +16,10 @@ export async function GET(req: NextRequest) {
   }
 
   const [t] = await db.select().from(trainer).where(eq(trainer.id, trainerId));
+
+  // Rate skema paket butuh jumlah sesi penuh per kelas, jadi dihitung dari
+  // seluruh sesi - bukan cuma punya trainer ini.
+  const rateMap = await hitungRatePerSesi();
 
   const rows = await db
     .select({
@@ -46,7 +51,7 @@ export async function GET(req: NextRequest) {
       pertemuanKe: r.pertemuanKe,
       tanggal: r.tanggal,
       materi: r.materi,
-      ratePerSesi: r.ratePerSesi ?? 0,
+      ratePerSesi: rateMap[r.sesiId] ?? 0,
       sudahDiPayslip: r.payslipId !== null,
       payslipId: r.payslipId,
       payslipPeriode: r.payslipPeriode,

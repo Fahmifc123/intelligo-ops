@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { payslip, payslipItem, sesi, kelas, trainer, feeRule } from "@/db/schema";
 import { eq, inArray } from "drizzle-orm";
+import { hitungRatePerSesi } from "@/lib/feeQuery";
 
 // GET /api/payslip?trainerId=...&periode=2026-08 (keduanya opsional filter)
 // Balikin payslip beserta ringkasan jumlah sesi & total fee-nya.
@@ -88,11 +89,14 @@ export async function POST(req: NextRequest) {
       id: sesi.id,
       status: sesi.status,
       kelasId: sesi.kelasId,
-      ratePerSesi: feeRule.ratePerSesi,
     })
     .from(sesi)
-    .leftJoin(feeRule, eq(feeRule.kelasId, sesi.kelasId))
     .where(inArray(sesi.id, sesiIds));
+
+  // Rate di-snapshot ke payslip_item. Buat skema paket, angkanya bergantung
+  // ke jumlah sesi penuh kelasnya, jadi dihitung lewat helper - bukan join
+  // langsung ke feeRule.
+  const rateMap = await hitungRatePerSesi();
 
   if (sesiRows.length !== sesiIds.length) {
     return NextResponse.json({ error: "Ada sesiId yang gak ditemukan" }, { status: 400 });
@@ -127,7 +131,7 @@ export async function POST(req: NextRequest) {
     sesiRows.map((s) => ({
       payslipId: row.id,
       sesiId: s.id,
-      ratePerSesi: s.ratePerSesi ?? 0,
+      ratePerSesi: rateMap[s.id] ?? 0,
     }))
   );
 

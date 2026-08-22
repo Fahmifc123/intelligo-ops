@@ -38,11 +38,27 @@ export const sesi = sqliteTable("sesi", {
   createdAt: text("created_at").default(sql`(current_timestamp)`),
 });
 
+// Dua cara ngitung fee sebuah kelas, dibedain lewat kolom `skema`:
+//
+//   flat  - dibayar per sesi. `ratePerSesi` yang dipakai, `totalPaket` null.
+//           Sesi nambah = fee ikut nambah.
+//
+//   paket - borongan. Harga kelas udah disepakati di `totalPaket` (mis. 10jt)
+//           dan gak berubah walau jumlah sesinya meleset dari `targetSesi`.
+//           Rate tiap sesi dihitung on-the-fly = totalPaket / jumlah sesi
+//           yang beneran ada. Lihat hitungRatePaket() di src/lib/fee.ts -
+//           sisa pembagian diserap di sesi terakhir biar jumlahnya persis.
+//
+// `ratePerSesi` tetap notNull buat skema paket (diisi hasil bagi rata) supaya
+// query lama yang cuma baca kolom itu gak pecah, tapi angka yang dipakai
+// buat duit beneran selalu dari hitungRatePaket().
 export const feeRule = sqliteTable("fee_rule", {
   id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   kelasId: text("kelas_id").notNull().references(() => kelas.id),
   ratePerSesi: real("rate_per_sesi").notNull(),
-  skema: text("skema").notNull().default("flat"), // flat | tier
+  skema: text("skema").notNull().default("flat"), // flat | paket
+  totalPaket: real("total_paket"),
+  targetSesi: integer("target_sesi"),
   createdAt: text("created_at").default(sql`(current_timestamp)`),
 });
 
