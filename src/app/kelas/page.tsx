@@ -8,6 +8,7 @@ type Kelas = {
   tipe: string;
   trainerId: string;
   trainerNama: string | null;
+  tanggalMulai: string | null;
   navigatorSheetId: string | null;
   navigatorLastSyncedAt: string | null;
 };
@@ -58,6 +59,11 @@ export default function KelasPage() {
   const [showManualMap, setShowManualMap] = useState(false);
   const [checking, setChecking] = useState(false);
   const [showForm, setShowForm] = useState(false);
+  // Kelas yang lagi diedit. null = form dalam mode "tambah baru".
+  const [editId, setEditId] = useState<string | null>(null);
+  const [tanggalMulai, setTanggalMulai] = useState("");
+  const [formMsg, setFormMsg] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   async function load() {
     const [k, t, s] = await Promise.all([
@@ -118,36 +124,143 @@ export default function KelasPage() {
     if (next.pertemuan !== undefined && next.trainer !== undefined) checkLink(next);
   }
 
-  async function addKelas(e: React.FormEvent) {
-    e.preventDefault();
-    if (!nama.trim() || !trainerId) return;
-    setLoading(true);
-    const res = await fetch("/api/kelas", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        nama,
-        tipe,
-        trainerId,
-        navigatorSheetId: sheetLink || undefined,
-        navigatorColumnMap: Object.keys(columnMap).length ? columnMap : undefined,
-      }),
-    });
-    const newKelas = await res.json();
-    if (rate) {
-      await fetch("/api/fee-rule", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ kelasId: newKelas.id, ratePerSesi: Number(rate) }),
-      });
-    }
+  function resetForm() {
+    setEditId(null);
     setNama("");
+    setTipe("bootcamp");
+    setTrainerId(trainers[0]?.id ?? "");
     setRate("");
+    setTanggalMulai("");
     setSheetLink("");
     setPreview(null);
     setColumnMap({});
     setShowManualMap(false);
+    setFormMsg(null);
+  }
+
+  /** Isi form dari data kelas yang mau diedit, terus scroll ke form-nya. */
+  async function startEdit(k: Kelas) {
+    setEditId(k.id);
+    setNama(k.nama);
+    setTipe(k.tipe);
+    setTrainerId(k.trainerId);
+    setTanggalMulai(k.tanggalMulai ?? "");
+    // Sheet disimpan sebagai ID, bukan URL penuh. Ditampilkan apa adanya -
+    // extractSheetId di server nerima dua-duanya, jadi user boleh paste
+    // link penuh buat nggantinya.
+    setSheetLink(k.navigatorSheetId ?? "");
+    setPreview(null);
+    setColumnMap({});
+    setShowManualMap(false);
+    setFormMsg(null);
+    setShowForm(true);
+
+    // Rate ada di tabel terpisah, jadi diambil belakangan.
+    setRate("");
+    try {
+      const res = await fetch(`/api/kelas/${k.id}`);
+      if (res.ok) {
+        const detail = await res.json();
+        if (detail.ratePerSesi !== null) setRate(String(detail.ratePerSesi));
+      }
+    } catch {
+      // Rate gagal keambil bukan alasan buat batalin edit - field-nya
+      // dibiarin kosong, dan kalau user gak nyentuh, rate lama tetap aman.
+    }
+
+    if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  async function submitKelas(e: React.FormEvent) {
+    e.preventDefault();
+    if (!nama.trim() || !trainerId) return;
+    setLoading(true);
+    setFormMsg(null);
+
+    try {
+      if (editId) {
+        const res = await fetch(`/api/kelas/${editId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            nama,
+            tipe,
+            trainerId,
+            tanggalMulai: tanggalMulai || null,
+            navigatorSheetId: sheetLink || null,
+            // Cuma kirim mapping kalau user emang nyetel ulang di sesi edit
+            // ini; kalau nggak, mapping lama di DB dibiarin apa adanya.
+            ...(Object.keys(columnMap).length ? { navigatorColumnMap: columnMap } : {}),
+            ratePerSesi: rate === "" ? null : Number(rate),
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          setFormMsg(`Gagal: ${data.error ?? "kelas gagal diupdate"}`);
+          setLoading(false);
+          return;
+        }
+      } else {
+        const res = await fetch("/api/kelas", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            nama,
+            tipe,
+            trainerId,
+            tanggalMulai: tanggalMulai || undefined,
+            navigatorSheetId: sheetLink || undefined,
+            navigatorColumnMap: Object.keys(columnMap).length ? columnMap : undefined,
+          }),
+        });
+        const newKelas = await res.json();
+        if (!res.ok) {
+          setFormMsg(`Gagal: ${newKelas.error ?? "kelas gagal dibuat"}`);
+          setLoading(false);
+          return;
+        }
+        if (rate) {
+          await fetch("/api/fee-rule", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ kelasId: newKelas.id, ratePerSesi: Number(rate) }),
+          });
+        }
+      }
+
+      resetForm();
+      setShowForm(false);
+      load();
+    } catch (err) {
+      setFormMsg(`Gagal: ${err instanceof Error ? err.message : String(err)}`);
+    }
     setLoading(false);
+  }
+
+  async function deleteKelas(k: Kelas) {
+    const { total } = progressOf(k.id);
+    const konfirmasi =
+      total > 0
+        ? `Kelas "${k.nama}" masih punya ${total} sesi. Hapus sesinya dulu sebelum kelas bisa dihapus.`
+        : `Hapus kelas "${k.nama}"? Tindakan ini gak bisa dibatalin.`;
+
+    if (total > 0) {
+      window.alert(konfirmasi);
+      return;
+    }
+    if (!window.confirm(konfirmasi)) return;
+
+    setDeletingId(k.id);
+    setFormMsg(null);
+    try {
+      const res = await fetch(`/api/kelas/${k.id}`, { method: "DELETE" });
+      const data = await res.json();
+      if (!res.ok) setFormMsg(`Gagal hapus: ${data.error}`);
+      else if (editId === k.id) resetForm();
+    } catch (err) {
+      setFormMsg(`Gagal hapus: ${err instanceof Error ? err.message : String(err)}`);
+    }
+    setDeletingId(null);
     load();
   }
 
@@ -198,7 +311,14 @@ export default function KelasPage() {
           </button>
           <button
             type="button"
-            onClick={() => setShowForm((v) => !v)}
+            onClick={() => {
+              if (showForm) {
+                resetForm();
+                setShowForm(false);
+              } else {
+                setShowForm(true);
+              }
+            }}
             className="flex flex-1 items-center justify-center gap-2 whitespace-nowrap rounded-lg bg-secondary-container px-6 py-2.5 font-geist text-label-md text-on-secondary-container shadow-sm transition-colors hover:bg-secondary md:flex-none"
           >
             <span className="material-symbols-outlined text-[18px]">
@@ -209,13 +329,29 @@ export default function KelasPage() {
         </div>
       </div>
 
-      {/* Form tambah kelas */}
+      {/* Form tambah / edit kelas */}
       {showForm && (
         <form
-          onSubmit={addKelas}
+          onSubmit={submitKelas}
           className="flex flex-col gap-stack-md rounded-xl border border-outline-variant bg-surface-container-lowest p-6"
         >
-          <h2 className="font-geist text-headline-sm text-primary">Buat Kelas Baru</h2>
+          <div className="flex items-start justify-between gap-4">
+            <h2 className="font-geist text-headline-sm text-primary">
+              {editId ? `Edit Kelas — ${nama || "tanpa nama"}` : "Buat Kelas Baru"}
+            </h2>
+            {editId && (
+              <button
+                type="button"
+                onClick={() => {
+                  resetForm();
+                  setShowForm(false);
+                }}
+                className="whitespace-nowrap font-geist text-label-sm text-text-muted transition-colors hover:text-primary"
+              >
+                Batal edit
+              </button>
+            )}
+          </div>
 
           <div className="grid grid-cols-1 gap-stack-md md:grid-cols-2">
             <div className="flex flex-col gap-1.5">
@@ -274,6 +410,21 @@ export default function KelasPage() {
                 type="number"
                 value={rate}
                 onChange={(e) => setRate(e.target.value)}
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label
+                htmlFor="kelas-tanggal"
+                className="font-geist text-label-sm text-text-muted"
+              >
+                Tanggal mulai (opsional)
+              </label>
+              <input
+                id="kelas-tanggal"
+                className={inputClass}
+                type="date"
+                value={tanggalMulai}
+                onChange={(e) => setTanggalMulai(e.target.value)}
               />
             </div>
           </div>
@@ -384,12 +535,18 @@ export default function KelasPage() {
             )}
           </div>
 
+          {formMsg && (
+            <p className="rounded-lg border border-error-container bg-error-container/40 p-3 font-inter text-body-sm text-on-error-container">
+              {formMsg}
+            </p>
+          )}
+
           <button
             type="submit"
             disabled={loading || !trainers.length}
             className="self-start rounded-lg bg-primary px-6 py-2.5 font-geist text-label-md text-on-primary transition-colors hover:bg-primary-container disabled:opacity-50"
           >
-            {loading ? "Menyimpan..." : "Tambah Kelas"}
+            {loading ? "Menyimpan..." : editId ? "Simpan Perubahan" : "Tambah Kelas"}
           </button>
           {!trainers.length && (
             <p className="font-inter text-body-sm text-warning">
@@ -493,6 +650,31 @@ export default function KelasPage() {
                     Belum ada Navigator sheet
                   </p>
                 )}
+              </div>
+
+              {/* Edit & hapus. Hapus dibikin sekunder (cuma ikon) - dia
+                  destruktif dan jauh lebih jarang dipakai daripada edit. */}
+              <div className="mt-2 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => startEdit(k)}
+                  className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-outline-variant bg-surface-container-low px-4 py-2 font-geist text-label-sm text-primary transition-colors hover:bg-surface-container"
+                >
+                  <span className="material-symbols-outlined text-[16px]">edit</span>
+                  Edit
+                </button>
+                <button
+                  type="button"
+                  onClick={() => deleteKelas(k)}
+                  disabled={deletingId === k.id}
+                  title={total > 0 ? "Hapus sesinya dulu" : "Hapus kelas"}
+                  aria-label={`Hapus kelas ${k.nama}`}
+                  className="flex items-center justify-center rounded-lg border border-outline-variant bg-surface-container-low px-3 py-2 font-geist text-label-sm text-error transition-colors hover:bg-error-container disabled:opacity-50"
+                >
+                  <span className="material-symbols-outlined text-[16px]">
+                    {deletingId === k.id ? "hourglass_empty" : "delete"}
+                  </span>
+                </button>
               </div>
             </div>
           );
