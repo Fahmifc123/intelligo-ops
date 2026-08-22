@@ -36,6 +36,7 @@ const TIPE_LABEL: Record<string, string> = {
   bootcamp: "Bootcamp",
   private: "Private",
   mbc: "MBC",
+  corporate: "Corporate Training",
 };
 
 export default function KelasPage() {
@@ -242,6 +243,7 @@ export default function KelasPage() {
                 <option value="bootcamp">Bootcamp</option>
                 <option value="private">Private</option>
                 <option value="mbc">MBC</option>
+                <option value="corporate">Corporate Training</option>
               </select>
             </div>
             <div className="flex flex-col gap-1.5">

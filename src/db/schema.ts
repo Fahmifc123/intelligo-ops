@@ -12,7 +12,7 @@ export const trainer = sqliteTable("trainer", {
 export const kelas = sqliteTable("kelas", {
   id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   nama: text("nama").notNull(),
-  tipe: text("tipe").notNull(), // bootcamp | private | mbc
+  tipe: text("tipe").notNull(), // bootcamp | private | mbc | corporate
   trainerId: text("trainer_id").notNull().references(() => trainer.id),
   tanggalMulai: text("tanggal_mulai"),
   // ID Google Sheet Navigator kelas ini (dari URL sheet: /d/{INI_ID}/edit).
