@@ -1,4 +1,5 @@
 import "server-only";
+import { createHash } from "node:crypto";
 import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
 
@@ -15,15 +16,24 @@ import { cookies } from "next/headers";
 const COOKIE_NAME = "session";
 const SESSION_DURATION_MS = 30 * 24 * 60 * 60 * 1000; // 30 hari
 
+/**
+ * Kunci buat nandatanganin JWT session. Sengaja gak butuh env var
+ * terpisah (SESSION_SECRET) - diturunin dari AUTH_PASSWORD yang emang
+ * udah wajib di-set, di-hash SHA-256 dulu biar:
+ *   - panjangnya konsisten & cukup buat HS256 (password mentah user bisa
+ *     pendek/lemah buat dipakai langsung sebagai kunci HMAC)
+ *   - kalau AUTH_PASSWORD diganti, semua session lama otomatis invalid
+ *     (kunci tandatangannya ikut berubah) - efek samping yang wajar.
+ */
 function getSecretKey() {
-  const secret = process.env.SESSION_SECRET;
-  if (!secret) {
+  const password = process.env.AUTH_PASSWORD;
+  if (!password) {
     throw new Error(
-      "SESSION_SECRET belum di-set. Isi di .env.local (lokal) atau Environment " +
-        "Variables Vercel (production) - generate dengan: openssl rand -base64 32"
+      "AUTH_PASSWORD belum di-set. Isi di .env.local (lokal) atau Environment " +
+        "Variables Vercel (production)."
     );
   }
-  return new TextEncoder().encode(secret);
+  return createHash("sha256").update(password).update("intelligo-ops-session").digest();
 }
 
 type SessionPayload = {
