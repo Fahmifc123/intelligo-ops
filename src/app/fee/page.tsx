@@ -18,7 +18,18 @@ type FeeRow = {
 
 type Sesi = { id: string; kelasId: string; status: string; tanggal: string | null };
 type Trainer = { id: string; nama: string };
-type Kelas = { id: string; nama: string; trainerId: string };
+type Kelas = {
+  id: string;
+  nama: string;
+  trainerId: string;
+  trainerNama: string | null;
+  // Murni catatan admin, gak dipakai buat ngitung apapun (lihat schema) -
+  // di sini dipakai buat ngelompokin panel "belum lunas" per pola bayar.
+  polaPembayaran: "akhir" | "bulanan";
+  totalFeeKelas: number;
+  feeLunasKelas: number;
+  trainers: { trainerNama: string }[];
+};
 
 export default function FeePage() {
   const [rows, setRows] = useState<FeeRow[]>([]);
@@ -94,6 +105,32 @@ export default function FeePage() {
 
   const kelasUntukDropdown =
     trainerFilter === "all" ? kelasList : kelasList.filter((k) => k.trainerId === trainerFilter);
+
+  // Kelas yang masih ada sisa fee belum lunas, dipecah per pola pembayaran -
+  // ini yang beda dari tabel utama di bawah (yang rekapnya per TRAINER,
+  // gabungan semua kelas dia). Di sini per KELAS, biar "kelas mana aja yang
+  // belum dibayar" langsung kejawab tanpa mesti buka satu-satu.
+  // Ikut filter trainer & kelas yang aktif; sengaja GAK ikut filter
+  // bulan/tahun - sisa belum lunas itu status kumulatif kelas, bukan
+  // kejadian di bulan tertentu.
+  const kelasBelumLunas = kelasList
+    .filter((k) => k.totalFeeKelas > k.feeLunasKelas)
+    .filter((k) => trainerFilter === "all" || k.trainerId === trainerFilter)
+    .filter((k) => kelasFilter === "all" || k.id === kelasFilter)
+    .map((k) => ({ ...k, sisa: k.totalFeeKelas - k.feeLunasKelas }))
+    .sort((a, b) => b.sisa - a.sisa);
+
+  const kelasBulananBelumLunas = kelasBelumLunas.filter((k) => k.polaPembayaran === "bulanan");
+  const kelasAkhirBelumLunas = kelasBelumLunas.filter((k) => k.polaPembayaran === "akhir");
+  const sisaBulanan = kelasBulananBelumLunas.reduce((a, k) => a + k.sisa, 0);
+  const sisaAkhir = kelasAkhirBelumLunas.reduce((a, k) => a + k.sisa, 0);
+
+  /** Nama trainer buat ditampilin di panel - "Budi" atau "Budi +1 lagi". */
+  function trainerLabel(k: Kelas): string {
+    const nama = k.trainers?.length ? k.trainers.map((t) => t.trainerNama) : [k.trainerNama ?? "-"];
+    if (nama.length === 1) return nama[0];
+    return `${nama[0]} +${nama.length - 1} lagi`;
+  }
 
   const inputClass =
     "w-full rounded-lg border border-outline-variant bg-surface px-3 py-2 font-inter text-body-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-primary";
@@ -226,6 +263,99 @@ export default function FeePage() {
           </button>
         )}
       </div>
+
+      {/* Kelas belum lunas, dipecah per pola pembayaran fee-nya. Beda dari
+          tabel di bawah (rekap per trainer) - ini per kelas, biar langsung
+          kejawab "kelas mana aja yang belum dibayar dan berapa". */}
+      {kelasBelumLunas.length > 0 && (
+        <div className="grid grid-cols-1 gap-stack-md lg:grid-cols-2">
+          <div className="flex flex-col overflow-hidden rounded-xl border border-outline-variant bg-surface-container-lowest shadow-sm">
+            <div className="flex items-center justify-between gap-3 border-b border-outline-variant bg-surface-container-low px-5 py-3.5">
+              <div className="flex items-center gap-2">
+                <span className="material-symbols-outlined text-[18px] text-secondary">
+                  calendar_month
+                </span>
+                <h2 className="font-geist text-label-lg text-primary">
+                  Bayar Bulanan &middot; Belum Lunas
+                </h2>
+              </div>
+              <span className="whitespace-nowrap font-geist text-label-md text-secondary tabular-nums">
+                {formatRupiah(sisaBulanan)}
+              </span>
+            </div>
+            {kelasBulananBelumLunas.length === 0 ? (
+              <p className="p-5 font-inter text-body-sm text-text-muted">
+                Semua kelas pola bulanan udah lunas.
+              </p>
+            ) : (
+              <div className="flex flex-col divide-y divide-outline-variant/60">
+                {kelasBulananBelumLunas.map((k) => (
+                  <Link
+                    key={k.id}
+                    href={`/kelas/${k.id}`}
+                    className="flex items-center justify-between gap-3 px-5 py-3 transition-colors hover:bg-surface-container-low"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate font-inter text-body-sm text-on-surface-variant">
+                        {k.nama}
+                      </p>
+                      <p className="truncate font-inter text-label-sm text-text-muted">
+                        {trainerLabel(k)}
+                      </p>
+                    </div>
+                    <span className="whitespace-nowrap font-geist text-label-md text-primary tabular-nums">
+                      {formatRupiah(k.sisa)}
+                    </span>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="flex flex-col overflow-hidden rounded-xl border border-outline-variant bg-surface-container-lowest shadow-sm">
+            <div className="flex items-center justify-between gap-3 border-b border-outline-variant bg-surface-container-low px-5 py-3.5">
+              <div className="flex items-center gap-2">
+                <span className="material-symbols-outlined text-[18px] text-secondary">
+                  flag
+                </span>
+                <h2 className="font-geist text-label-lg text-primary">
+                  Bayar di Akhir Kelas &middot; Belum Lunas
+                </h2>
+              </div>
+              <span className="whitespace-nowrap font-geist text-label-md text-secondary tabular-nums">
+                {formatRupiah(sisaAkhir)}
+              </span>
+            </div>
+            {kelasAkhirBelumLunas.length === 0 ? (
+              <p className="p-5 font-inter text-body-sm text-text-muted">
+                Semua kelas pola di-akhir udah lunas.
+              </p>
+            ) : (
+              <div className="flex flex-col divide-y divide-outline-variant/60">
+                {kelasAkhirBelumLunas.map((k) => (
+                  <Link
+                    key={k.id}
+                    href={`/kelas/${k.id}`}
+                    className="flex items-center justify-between gap-3 px-5 py-3 transition-colors hover:bg-surface-container-low"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate font-inter text-body-sm text-on-surface-variant">
+                        {k.nama}
+                      </p>
+                      <p className="truncate font-inter text-label-sm text-text-muted">
+                        {trainerLabel(k)}
+                      </p>
+                    </div>
+                    <span className="whitespace-nowrap font-geist text-label-md text-primary tabular-nums">
+                      {formatRupiah(k.sisa)}
+                    </span>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Summary cards */}
       <div className="grid grid-cols-1 gap-stack-md sm:grid-cols-2 lg:grid-cols-4">
