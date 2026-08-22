@@ -92,6 +92,13 @@ export default function KelasPage() {
   const [formMsg, setFormMsg] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
+  // Search & filter daftar kelas. Semua "all" = gak difilter.
+  const [search, setSearch] = useState("");
+  const [filterStatus, setFilterStatus] = useState("all");
+  const [filterTipe, setFilterTipe] = useState("all");
+  const [filterTrainerId, setFilterTrainerId] = useState("all");
+  const [showFilter, setShowFilter] = useState(false);
+
   type BarisFee = { skema: "flat" | "paket"; rate: string; total: string; target: string };
   const feeKosong: BarisFee = { skema: "flat", rate: "", total: "", target: "" };
 
@@ -136,6 +143,38 @@ export default function KelasPage() {
     const total = sesiKelas.length;
     const selesai = sesiKelas.filter((s) => s.status === "selesai").length;
     return { total, selesai };
+  }
+
+  // Search cocok ke nama kelas ATAU nama trainer manapun yang ngajar di
+  // situ (bukan cuma trainer utama) - kelas multi-trainer bisa dicari
+  // pakai nama trainer kedua/ketiga juga.
+  const q = search.trim().toLowerCase();
+  const filteredKelas = kelasList.filter((k) => {
+    if (filterStatus !== "all" && k.status !== filterStatus) return false;
+    if (filterTipe !== "all" && k.tipe !== filterTipe) return false;
+    if (
+      filterTrainerId !== "all" &&
+      !(k.trainers ?? []).some((t) => t.trainerId === filterTrainerId)
+    ) {
+      return false;
+    }
+    if (q) {
+      const namaCocok = k.nama.toLowerCase().includes(q);
+      const trainerCocok = (k.trainers ?? []).some((t) =>
+        t.trainerNama.toLowerCase().includes(q)
+      );
+      if (!namaCocok && !trainerCocok) return false;
+    }
+    return true;
+  });
+
+  const filterAktif =
+    filterStatus !== "all" || filterTipe !== "all" || filterTrainerId !== "all";
+
+  function resetFilter() {
+    setFilterStatus("all");
+    setFilterTipe("all");
+    setFilterTrainerId("all");
   }
 
   async function checkLink(mapOverride?: Record<string, number>) {
@@ -414,14 +453,22 @@ export default function KelasPage() {
           </p>
         </div>
         <div className="flex w-full gap-3 md:w-auto">
-          {/* TODO: belum diimplementasi - filter kelas belum ada */}
           <button
             type="button"
-            disabled
-            className="flex flex-1 cursor-not-allowed items-center justify-center gap-2 rounded-lg border border-outline-variant bg-surface-container-lowest px-5 py-2.5 font-geist text-label-md text-text-muted opacity-50 md:flex-none"
+            onClick={() => setShowFilter((v) => !v)}
+            className={`relative flex flex-1 items-center justify-center gap-2 rounded-lg border px-5 py-2.5 font-geist text-label-md transition-colors md:flex-none ${
+              showFilter || filterAktif
+                ? "border-primary bg-primary-container/10 text-primary"
+                : "border-outline-variant bg-surface-container-lowest text-on-surface-variant hover:bg-surface-container"
+            }`}
           >
             <span className="material-symbols-outlined text-[18px]">filter_list</span>
             Filter
+            {filterAktif && (
+              <span className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-secondary font-geist text-[10px] text-on-secondary">
+                {[filterStatus, filterTipe, filterTrainerId].filter((v) => v !== "all").length}
+              </span>
+            )}
           </button>
           <button
             type="button"
@@ -441,6 +488,106 @@ export default function KelasPage() {
             {showForm ? "Tutup" : "Tambah Kelas"}
           </button>
         </div>
+      </div>
+
+      {/* Search & filter */}
+      <div className="flex flex-col gap-stack-sm">
+        <div className="relative">
+          <span className="material-symbols-outlined pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[18px] text-outline">
+            search
+          </span>
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Cari nama kelas atau trainer..."
+            aria-label="Cari kelas"
+            className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest py-2.5 pl-10 pr-3 font-inter text-body-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-primary"
+          />
+        </div>
+
+        {showFilter && (
+          <div className="flex flex-col gap-stack-sm rounded-xl border border-outline-variant bg-surface-container-lowest p-4">
+            <div className="grid grid-cols-1 gap-stack-sm sm:grid-cols-3">
+              <div className="flex flex-col gap-1.5">
+                <label
+                  htmlFor="filter-status"
+                  className="font-geist text-label-sm text-text-muted"
+                >
+                  Status
+                </label>
+                <select
+                  id="filter-status"
+                  className={inputClass}
+                  value={filterStatus}
+                  onChange={(e) => setFilterStatus(e.target.value)}
+                >
+                  <option value="all">Semua status</option>
+                  <option value="persiapan">Persiapan</option>
+                  <option value="aktif">Aktif</option>
+                  <option value="selesai">Selesai · fee belum lunas</option>
+                  <option value="lunas">Selesai · fee lunas</option>
+                </select>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label htmlFor="filter-tipe" className="font-geist text-label-sm text-text-muted">
+                  Tipe kelas
+                </label>
+                <select
+                  id="filter-tipe"
+                  className={inputClass}
+                  value={filterTipe}
+                  onChange={(e) => setFilterTipe(e.target.value)}
+                >
+                  <option value="all">Semua tipe</option>
+                  {Object.entries(TIPE_LABEL).map(([val, label]) => (
+                    <option key={val} value={val}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label
+                  htmlFor="filter-trainer"
+                  className="font-geist text-label-sm text-text-muted"
+                >
+                  Trainer
+                </label>
+                <select
+                  id="filter-trainer"
+                  className={inputClass}
+                  value={filterTrainerId}
+                  onChange={(e) => setFilterTrainerId(e.target.value)}
+                >
+                  <option value="all">Semua trainer</option>
+                  {trainers.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.nama}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {filterAktif && (
+              <button
+                type="button"
+                onClick={resetFilter}
+                className="flex w-fit items-center gap-1.5 font-geist text-label-sm text-text-muted transition-colors hover:text-primary"
+              >
+                <span className="material-symbols-outlined text-[16px]">close</span>
+                Reset filter
+              </button>
+            )}
+          </div>
+        )}
+
+        {(q || filterAktif) && (
+          <p className="font-inter text-label-sm text-text-muted">
+            {filteredKelas.length} dari {kelasList.length} kelas
+          </p>
+        )}
       </div>
 
       {/* Form tambah / edit kelas */}
@@ -837,9 +984,32 @@ export default function KelasPage() {
         </div>
       )}
 
+      {/* Gak ada kelas yang cocok search/filter, tapi kelasnya sendiri ada -
+          beda pesan sama kondisi "belum ada kelas sama sekali" di bawah. */}
+      {kelasList.length > 0 && filteredKelas.length === 0 && (
+        <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-outline-variant p-10 text-center">
+          <span className="material-symbols-outlined text-[32px] text-outline">
+            search_off
+          </span>
+          <p className="font-inter text-body-sm text-text-muted">
+            Gak ada kelas yang cocok. Coba ubah kata kunci atau filternya.
+          </p>
+          <button
+            type="button"
+            onClick={() => {
+              setSearch("");
+              resetFilter();
+            }}
+            className="font-geist text-label-sm text-primary hover:underline"
+          >
+            Reset pencarian
+          </button>
+        </div>
+      )}
+
       {/* Grid kelas */}
       <div className="grid grid-cols-1 gap-stack-md md:grid-cols-2 lg:grid-cols-3">
-        {kelasList.map((k) => {
+        {filteredKelas.map((k) => {
           const { total, selesai } = progressOf(k.id);
           const pct = total > 0 ? Math.round((selesai / total) * 100) : 0;
           // Status dihitung di server (lihat /api/kelas) biar aturannya
