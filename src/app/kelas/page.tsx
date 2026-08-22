@@ -1,5 +1,8 @@
 "use client";
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
+import Link from "next/link";
+import { useSearchParams, useRouter } from "next/navigation";
+import { rupiahRingkas as rupiah, TIPE_LABEL, STATUS_BADGE } from "@/lib/ui";
 
 type Trainer = { id: string; nama: string };
 
@@ -51,54 +54,6 @@ const MAPPABLE_FIELDS = [
   { key: "materi", label: "Judul materi", wajib: false },
   { key: "record", label: "Link record", wajib: false },
 ];
-
-/** Format rupiah ringkas buat card - "Rp 6,7jt" lebih kebaca dari 7 digit. */
-function rupiah(v: number): string {
-  if (v >= 1_000_000) {
-    const jt = v / 1_000_000;
-    // Satu desimal cuma kalau perlu, biar "Rp 5jt" gak jadi "Rp 5,0jt".
-    return `Rp ${(Math.round(jt * 10) / 10).toLocaleString("id-ID")}jt`;
-  }
-  if (v >= 1000) return `Rp ${Math.round(v / 1000).toLocaleString("id-ID")}rb`;
-  return `Rp ${v.toLocaleString("id-ID")}`;
-}
-
-/**
- * Badge status kelas. Dua status "selesai" sengaja nyebut fee eksplisit -
- * "Selesai" doang ambigu antara "udah kelar ngajar" dan "udah dibayar".
- */
-const STATUS_BADGE: Record<
-  string,
-  { label: string; kelas: string; ikon: string }
-> = {
-  persiapan: {
-    label: "Persiapan",
-    kelas: "bg-warning/10 text-warning",
-    ikon: "schedule",
-  },
-  aktif: {
-    label: "Aktif",
-    kelas: "bg-success/10 text-success",
-    ikon: "play_circle",
-  },
-  selesai: {
-    label: "Selesai · fee belum lunas",
-    kelas: "bg-secondary-container/20 text-secondary",
-    ikon: "payments",
-  },
-  lunas: {
-    label: "Selesai · fee lunas",
-    kelas: "bg-surface-container text-text-muted",
-    ikon: "task_alt",
-  },
-};
-
-const TIPE_LABEL: Record<string, string> = {
-  bootcamp: "Bootcamp",
-  private: "Private",
-  mbc: "MBC",
-  corporate: "Corporate Training",
-};
 
 export default function KelasPage() {
   const [kelasList, setKelasList] = useState<Kelas[]>([]);
@@ -164,6 +119,8 @@ export default function KelasPage() {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+
 
   /** Progress sesi per kelas - dihitung dari data sesi yang emang kita punya. */
   function progressOf(kelasId: string) {
@@ -424,6 +381,14 @@ export default function KelasPage() {
 
   return (
     <div className="flex flex-col gap-stack-lg">
+      {/* Datang dari halaman detail kelas (tombol "Edit kelas") lewat
+          /kelas?edit=<id>. useSearchParams butuh Suspense boundary di App
+          Router, jadi dipisah ke komponen kecil sendiri daripada
+          nge-Suspense seluruh halaman. */}
+      <Suspense fallback={null}>
+        <EditFromQuery kelasList={kelasList} onEdit={startEdit} />
+      </Suspense>
+
       {/* Header */}
       <div className="flex flex-col items-start justify-between gap-4 md:flex-row md:items-end">
         <div>
@@ -965,16 +930,24 @@ export default function KelasPage() {
                 )}
               </div>
 
-              {/* Edit & hapus. Hapus dibikin sekunder (cuma ikon) - dia
-                  destruktif dan jauh lebih jarang dipakai daripada edit. */}
+              {/* Detail, edit & hapus. Hapus dibikin sekunder (cuma ikon) -
+                  dia destruktif dan jauh lebih jarang dipakai daripada dua lainnya. */}
               <div className="mt-2 flex gap-2">
+                <Link
+                  href={`/kelas/${k.id}`}
+                  className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-outline-variant bg-surface-container-low px-4 py-2 font-geist text-label-sm text-primary transition-colors hover:bg-surface-container"
+                >
+                  <span className="material-symbols-outlined text-[16px]">info</span>
+                  Detail
+                </Link>
                 <button
                   type="button"
                   onClick={() => startEdit(k)}
-                  className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-outline-variant bg-surface-container-low px-4 py-2 font-geist text-label-sm text-primary transition-colors hover:bg-surface-container"
+                  title="Edit kelas"
+                  aria-label={`Edit kelas ${k.nama}`}
+                  className="flex items-center justify-center rounded-lg border border-outline-variant bg-surface-container-low px-3 py-2 font-geist text-label-sm text-primary transition-colors hover:bg-surface-container"
                 >
                   <span className="material-symbols-outlined text-[16px]">edit</span>
-                  Edit
                 </button>
                 <button
                   type="button"
@@ -1010,4 +983,31 @@ export default function KelasPage() {
       </div>
     </div>
   );
+}
+
+/**
+ * Baca ?edit=<id> dari URL dan panggil onEdit kalau kelasnya ketemu, lalu
+ * bersihin query param-nya biar refresh gak ngebuka form itu lagi. Dipisah
+ * dari komponen utama karena useSearchParams butuh Suspense boundary.
+ */
+function EditFromQuery({
+  kelasList,
+  onEdit,
+}: {
+  kelasList: Kelas[];
+  onEdit: (k: Kelas) => void;
+}) {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+
+  useEffect(() => {
+    const editTarget = searchParams.get("edit");
+    if (!editTarget || !kelasList.length) return;
+    const k = kelasList.find((x) => x.id === editTarget);
+    if (k) onEdit(k);
+    router.replace("/kelas");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [kelasList, searchParams]);
+
+  return null;
 }
