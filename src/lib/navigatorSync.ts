@@ -10,7 +10,13 @@ import { and, eq } from "drizzle-orm";
  *
  * Kolom di sheet di-deteksi otomatis dari header row, bukan index tetap -
  * jadi urutan kolom boleh beda-beda antar sheet. WAJIB ada kolom
- * "Pertemuan" dan "Trainer" (case-insensitive).
+ * "Pertemuan" (case-insensitive).
+ *
+ * Kolom "Trainer" OPSIONAL: banyak sheet private course cuma dipakai satu
+ * trainer doang, jadi gak semua sheet nyantumin kolom itu. Kalau gak
+ * ketemu, sesi dianggap semuanya diajar trainer utama kelas (kelas.trainerId),
+ * dan status "selesai" ditentuin dari kolom Record keisi - bukan dari
+ * Trainer, karena kolomnya emang gak ada. Lihat syncKelasFromNavigator().
  */
 const HEADER_ALIASES: Record<string, string[]> = {
   pertemuan: ["pertemuan"],
@@ -116,21 +122,21 @@ export function detectColumns(
     }
   }
 
-  if (map.pertemuan === undefined || map.trainer === undefined) {
-    const kurang = [
-      map.pertemuan === undefined ? '"Pertemuan"' : null,
-      map.trainer === undefined ? '"Trainer"' : null,
-    ]
-      .filter(Boolean)
-      .join(" dan ");
+  if (map.pertemuan === undefined) {
     throw new Error(
-      `Kolom ${kurang} gak ketemu otomatis di sheet ini. Kolom yang ada: ${headerRow
+      `Kolom "Pertemuan" gak ketemu otomatis di sheet ini. Kolom yang ada: ${headerRow
         .filter(Boolean)
         .join(", ")}. Pilih kolomnya manual lewat "Atur kolom manual".`
     );
   }
 
   return map;
+}
+
+/** True kalau sheet ini gak punya kolom Trainer - sync-nya bakal pakai
+ * trainer tunggal dari kelas.trainerId, bukan baca per-baris dari sheet. */
+export function butuhTrainerManual(cols: Record<string, number>): boolean {
+  return cols.trainer === undefined;
 }
 
 /**
@@ -189,7 +195,9 @@ function excelSerialToDate(value: unknown): string | null {
 /** Field yang bisa di-map, buat nampilin form mapping manual di UI. */
 export const MAPPABLE_FIELDS = [
   { key: "pertemuan", label: "Pertemuan ke-", wajib: true },
-  { key: "trainer", label: "Trainer", wajib: true },
+  // Opsional: kelas yang sheet-nya gak punya kolom ini otomatis dianggap
+  // satu trainer aja (trainer utama kelas) - lihat butuhTrainerManual().
+  { key: "trainer", label: "Trainer", wajib: false },
   { key: "tanggal", label: "Tanggal", wajib: false },
   { key: "materi", label: "Judul materi", wajib: false },
   { key: "record", label: "Link record", wajib: false },
@@ -214,13 +222,23 @@ export async function previewNavigatorSheet(
 
   try {
     const detected = detectColumns(headerRow, override);
-    return { sheetId, headerRow, detected, needsManualMapping: false, error: null };
+    return {
+      sheetId,
+      headerRow,
+      detected,
+      needsManualMapping: false,
+      // Kolom Trainer gak ketemu -> UI perlu minta admin pilih 1 trainer
+      // buat kelas ini (semua sesi bakal atas nama dia).
+      needsTrainerManual: butuhTrainerManual(detected),
+      error: null,
+    };
   } catch (e) {
     return {
       sheetId,
       headerRow,
       detected: null,
       needsManualMapping: true,
+      needsTrainerManual: false,
       error: e instanceof Error ? e.message : String(e),
     };
   }
@@ -274,6 +292,12 @@ export async function syncKelasFromNavigator(kelasId: string): Promise<SyncResul
   const cols = detectColumns(headerRow, override);
   const rows = allRows.slice(1);
 
+  // Sheet gak punya kolom Trainer -> gak ada per-baris buat nentuin siapa
+  // yang ngajar ATAU kapan sesinya beneran udah kejadian. Dua-duanya
+  // dijawab dari trainer utama kelas + kolom Record (lihat komentar di
+  // detectColumns() dan butuhTrainerManual()).
+  const trainerManual = butuhTrainerManual(cols);
+
   const result: SyncResult = {
     kelasId: k.id,
     kelasNama: k.nama,
@@ -286,7 +310,6 @@ export async function syncKelasFromNavigator(kelasId: string): Promise<SyncResul
 
   for (const row of rows) {
     const pertemuanRaw = row[cols.pertemuan];
-    const trainerNamaSheet = (row[cols.trainer] || "").trim();
 
     const pertemuanKe = parseInt(String(pertemuanRaw), 10);
     if (!pertemuanRaw || isNaN(pertemuanKe)) {
@@ -295,23 +318,39 @@ export async function syncKelasFromNavigator(kelasId: string): Promise<SyncResul
       continue;
     }
 
-    // Status "selesai" = kolom Trainer di baris ini keisi nama trainer yang
-    // KEDAFTAR (siapapun, gak harus trainer utama kelas). Ini penanda
-    // "trainer ini udah ngajar pertemuan ini", BUKAN dari tanggal terisi -
-    // tanggal cuma info jadwal, bisa keisi buat sesi yang belum kejadian.
-    const trainerSheet = trainerNamaSheet
-      ? trainerByNama.get(trainerNamaSheet.toLowerCase())
-      : undefined;
-    const status = trainerSheet ? "selesai" : "belum";
+    let status: "selesai" | "belum";
+    let sesiTrainerId: string | null;
+    let trainerNamaSheet = "";
+    let trainerSheet: (typeof semuaTrainer)[number] | undefined;
 
-    // Sesi disimpan atas nama trainer yang ada di sheet. Kalau kosong,
-    // dibiarin null -> nanti kebaca sebagai trainer utama kelas.
-    const sesiTrainerId = trainerSheet?.id ?? null;
+    if (trainerManual) {
+      // Gak ada kolom Trainer buat dibaca. Semua sesi diajar trainer utama
+      // kelas (null = "ikut kelas.trainerId", konsisten sama sesi manual).
+      // "Selesai" ditentuin dari kolom Record keisi - itu bukti sesinya
+      // beneran udah kejadian, bukan cuma terjadwal.
+      sesiTrainerId = null;
+      status = cols.record !== undefined && (row[cols.record] || "").trim() ? "selesai" : "belum";
+    } else {
+      trainerNamaSheet = (row[cols.trainer] || "").trim();
+
+      // Status "selesai" = kolom Trainer di baris ini keisi nama trainer yang
+      // KEDAFTAR (siapapun, gak harus trainer utama kelas). Ini penanda
+      // "trainer ini udah ngajar pertemuan ini", BUKAN dari tanggal terisi -
+      // tanggal cuma info jadwal, bisa keisi buat sesi yang belum kejadian.
+      trainerSheet = trainerNamaSheet
+        ? trainerByNama.get(trainerNamaSheet.toLowerCase())
+        : undefined;
+      status = trainerSheet ? "selesai" : "belum";
+
+      // Sesi disimpan atas nama trainer yang ada di sheet. Kalau kosong,
+      // dibiarin null -> nanti kebaca sebagai trainer utama kelas.
+      sesiTrainerId = trainerSheet?.id ?? null;
+    }
 
     // Nama keisi tapi gak kedaftar = kemungkinan salah ketik, atau trainer
     // baru yang belum diinput. Sesi-nya tetap dibikin (status "belum"),
     // tapi dilaporin biar admin bisa nindaklanjutin.
-    if (trainerNamaSheet && !trainerSheet) {
+    if (!trainerManual && trainerNamaSheet && !trainerSheet) {
       result.errors.push(
         `Pertemuan ${pertemuanRaw}: nama trainer di sheet ("${trainerNamaSheet}") belum terdaftar. Tambahin dulu di halaman Trainer, atau betulin ejaannya.`
       );

@@ -42,6 +42,10 @@ type PreviewResult = {
   headerRow?: string[];
   detected?: Record<string, number> | null;
   needsManualMapping?: boolean;
+  // Kolom Trainer gak ketemu di sheet - semua sesi bakal dianggap diajar
+  // trainer utama kelas (dipilih di dropdown "Trainer" form, gak ada
+  // input tambahan). Lihat butuhTrainerManual() di src/lib/navigatorSync.ts.
+  needsTrainerManual?: boolean;
   error?: string | null;
 };
 
@@ -160,8 +164,10 @@ export default function KelasPage() {
     if (idx === "") delete next[field];
     else next[field] = Number(idx);
     setColumnMap(next);
-    // Re-validate langsung pakai mapping baru biar admin lihat hasilnya seketika.
-    if (next.pertemuan !== undefined && next.trainer !== undefined) checkLink(next);
+    // Re-validate langsung pakai mapping baru biar admin lihat hasilnya
+    // seketika. Trainer sengaja gak disyaratkan di sini - kelas tanpa
+    // kolom Trainer di sheet-nya valid, itu yang dicek pertemuan.
+    if (next.pertemuan !== undefined) checkLink(next);
   }
 
   function resetForm() {
@@ -756,6 +762,25 @@ export default function KelasPage() {
                     </li>
                   ))}
                 </ul>
+              </div>
+            )}
+            {/* Sheet gak punya kolom Trainer - jelasin apa yang bakal
+                kejadian, biar admin gak kaget kenapa nama trainer di sheet
+                (kalau ada) diabaikan sync. */}
+            {preview && preview.detected && preview.needsTrainerManual && (
+              <div className="rounded-lg border border-outline-variant bg-surface-container-low p-3 font-inter text-body-sm text-on-surface-variant">
+                <p className="flex items-start gap-2">
+                  <span className="material-symbols-outlined text-[18px] text-outline">
+                    info
+                  </span>
+                  <span>
+                    Sheet ini gak punya kolom Trainer, jadi semua sesi bakal dianggap
+                    diajar oleh trainer yang dipilih di field &quot;Trainer&quot; di atas.
+                    {preview.detected.record !== undefined
+                      ? " Sesi ditandai selesai kalau kolom Link record-nya keisi."
+                      : " Sheet ini juga gak punya kolom Record, jadi semua sesi yang tersinkron otomatis berstatus \"belum\" - tandai selesai manual di halaman Sesi."}
+                  </span>
+                </p>
               </div>
             )}
           </div>
