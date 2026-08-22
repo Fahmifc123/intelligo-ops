@@ -15,6 +15,9 @@ export async function GET(req: NextRequest) {
       materi: sesi.materi,
       status: sesi.status,
       linkRecord: sesi.linkRecord,
+      // Trainer sesi ini; null = ngikut trainer utama kelas.
+      trainerId: sesi.trainerId,
+      kelasTrainerId: kelas.trainerId,
     })
     .from(sesi)
     .leftJoin(kelas, eq(sesi.kelasId, kelas.id));
@@ -40,6 +43,8 @@ export async function POST(req: NextRequest) {
       materi: body.materi ?? null,
       status: body.status ?? "belum",
       linkRecord: body.linkRecord ?? null,
+      // Kosong = ngikut trainer utama kelas (dipakai kelas satu trainer).
+      trainerId: body.trainerId || null,
     })
     .returning();
   return NextResponse.json(row, { status: 201 });

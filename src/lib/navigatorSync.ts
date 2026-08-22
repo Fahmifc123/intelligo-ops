@@ -247,7 +247,13 @@ export async function syncKelasFromNavigator(kelasId: string): Promise<SyncResul
     throw new Error(`Kelas ${k.nama} belum punya navigatorSheetId`);
   }
 
-  const [t] = await db.select().from(trainer).where(eq(trainer.id, k.trainerId));
+  // Semua trainer, buat nyocokin nama di kolom Trainer sheet. Satu kelas
+  // bisa diajar gantian, jadi nama yang muncul belum tentu trainer utama.
+  // Dicocokin case-insensitive biar "budi" di sheet tetap ketemu "Budi".
+  const semuaTrainer = await db.select().from(trainer);
+  const trainerByNama = new Map(
+    semuaTrainer.map((x) => [x.nama.trim().toLowerCase(), x])
+  );
 
   const allRows = await fetchSheetRows(k.navigatorSheetId);
   if (allRows.length === 0) {
@@ -289,16 +295,25 @@ export async function syncKelasFromNavigator(kelasId: string): Promise<SyncResul
       continue;
     }
 
-    // Status "selesai" = kolom Trainer di baris ini keisi & namanya cocok
-    // sama trainer terdaftar buat kelas ini. Ini penanda "trainer ini udah
-    // ngajar pertemuan ini", BUKAN dari tanggal terisi - tanggal cuma info
-    // jadwal/riwayat, bisa keisi buat sesi yang belum kejadian juga.
-    const trainerCocok = !!trainerNamaSheet && (!t || trainerNamaSheet === t.nama.trim());
-    const status = trainerCocok ? "selesai" : "belum";
+    // Status "selesai" = kolom Trainer di baris ini keisi nama trainer yang
+    // KEDAFTAR (siapapun, gak harus trainer utama kelas). Ini penanda
+    // "trainer ini udah ngajar pertemuan ini", BUKAN dari tanggal terisi -
+    // tanggal cuma info jadwal, bisa keisi buat sesi yang belum kejadian.
+    const trainerSheet = trainerNamaSheet
+      ? trainerByNama.get(trainerNamaSheet.toLowerCase())
+      : undefined;
+    const status = trainerSheet ? "selesai" : "belum";
 
-    if (trainerNamaSheet && t && trainerNamaSheet !== t.nama.trim()) {
+    // Sesi disimpan atas nama trainer yang ada di sheet. Kalau kosong,
+    // dibiarin null -> nanti kebaca sebagai trainer utama kelas.
+    const sesiTrainerId = trainerSheet?.id ?? null;
+
+    // Nama keisi tapi gak kedaftar = kemungkinan salah ketik, atau trainer
+    // baru yang belum diinput. Sesi-nya tetap dibikin (status "belum"),
+    // tapi dilaporin biar admin bisa nindaklanjutin.
+    if (trainerNamaSheet && !trainerSheet) {
       result.errors.push(
-        `Pertemuan ${pertemuanRaw}: nama trainer di sheet ("${trainerNamaSheet}") beda dari trainer terdaftar ("${t.nama}")`
+        `Pertemuan ${pertemuanRaw}: nama trainer di sheet ("${trainerNamaSheet}") belum terdaftar. Tambahin dulu di halaman Trainer, atau betulin ejaannya.`
       );
     }
 
@@ -319,6 +334,7 @@ export async function syncKelasFromNavigator(kelasId: string): Promise<SyncResul
           materi,
           linkRecord: record,
           status,
+          trainerId: sesiTrainerId,
           source: "navigator_sync",
         })
         .where(eq(sesi.id, existing[0].id));
@@ -331,6 +347,7 @@ export async function syncKelasFromNavigator(kelasId: string): Promise<SyncResul
         materi,
         linkRecord: record,
         status,
+        trainerId: sesiTrainerId,
         source: "navigator_sync",
       });
       result.inserted++;

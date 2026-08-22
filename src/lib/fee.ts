@@ -110,37 +110,66 @@ export function rateSemuaSesi(
   return out;
 }
 
-type BarisSesi = { id: string; kelasId: string; pertemuanKe: number };
+export type BarisSesi = {
+  id: string;
+  kelasId: string;
+  pertemuanKe: number;
+  /** Trainer yang ngajar sesi ini (sesi.trainerId ?? kelas.trainerId). */
+  trainerId: string | null;
+};
+
+/** Kunci gabungan buat cari aturan fee satu trainer di satu kelas. */
+export function kunciFee(kelasId: string, trainerId: string | null): string {
+  return `${kelasId}::${trainerId ?? ""}`;
+}
+
+/**
+ * Cari aturan fee yang berlaku buat satu trainer di satu kelas.
+ *
+ * Yang spesifik menang: kalau ada baris khusus trainer ini, itu yang dipakai.
+ * Kalau nggak ada, jatuh ke baris lama yang trainerId-nya null (aturan
+ * se-kelas dari sebelum fitur multi-trainer).
+ */
+export function cariRule(
+  rules: Record<string, FeeRuleInput>,
+  kelasId: string,
+  trainerId: string | null
+): FeeRuleInput | null {
+  return (
+    rules[kunciFee(kelasId, trainerId)] ?? rules[kunciFee(kelasId, null)] ?? null
+  );
+}
 
 /**
  * Bikin peta { sesiId -> rate } untuk SEMUA sesi di database.
  *
- * Sengaja gak nerima filter: rate skema paket bergantung ke jumlah seluruh
- * sesi kelasnya. Kalau pembaginya cuma sesi yang lolos filter (mis. sesi
- * bulan ini doang), tiap sesi bakal kebagian jatah kegedean dan total
- * bayaran ngelewatin harga paket yang disepakati.
+ * Dikelompokkan per (kelas, trainer), bukan per kelas: satu kelas bisa
+ * diajar beberapa trainer dengan kesepakatan beda-beda, dan buat skema
+ * paket pembaginya adalah jumlah sesi YANG TRAINER ITU AJAR - bukan total
+ * sesi kelasnya. Kalau digabung, jatah 5jt Budi bakal ikut kebagi ke sesi
+ * yang diajar Andi.
  *
- * Pemanggil boleh nyaring hasilnya belakangan - yang penting pembaginya
- * dihitung dari populasi penuh.
+ * Sengaja gak nerima filter periode/trainer: pembagi skema paket harus
+ * dihitung dari populasi penuh. Kalau pembaginya cuma sesi bulan ini,
+ * tiap sesi kebagian jatah kegedean dan total bayaran ngelewatin
+ * kesepakatan. Pemanggil nyaring hasilnya belakangan.
  */
 export function petaRateSesi(
   semuaSesi: BarisSesi[],
-  rulePerKelas: Record<string, FeeRuleInput>
+  rules: Record<string, FeeRuleInput>
 ): Record<string, number> {
-  const perKelas: Record<string, BarisSesi[]> = {};
+  const grup: Record<string, BarisSesi[]> = {};
   for (const s of semuaSesi) {
-    (perKelas[s.kelasId] ??= []).push(s);
+    (grup[kunciFee(s.kelasId, s.trainerId)] ??= []).push(s);
   }
 
   const out: Record<string, number> = {};
-  for (const [kelasId, list] of Object.entries(perKelas)) {
+  for (const list of Object.values(grup)) {
     // Urutan nentuin sesi mana yang nyerap sisa pembulatan, jadi harus
     // stabil & sama di semua endpoint - pertemuanKe dulu, id buat tie-break.
     list.sort((a, b) => a.pertemuanKe - b.pertemuanKe || a.id.localeCompare(b.id));
-    Object.assign(
-      out,
-      rateSemuaSesi(rulePerKelas[kelasId] ?? null, list.map((s) => s.id))
-    );
+    const rule = cariRule(rules, list[0].kelasId, list[0].trainerId);
+    Object.assign(out, rateSemuaSesi(rule, list.map((s) => s.id)));
   }
   return out;
 }

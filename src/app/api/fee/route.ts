@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
-import { sesi, kelas, trainer, feeRule, payslipItem, payslip } from "@/db/schema";
+import { sesi, kelas, trainer, payslipItem, payslip } from "@/db/schema";
 import { eq } from "drizzle-orm";
-import { hitungRatePerSesi } from "@/lib/feeQuery";
+import { hitungRatePerSesi, trainerEfektif } from "@/lib/feeQuery";
 
 // GET /api/fee?periode=2026-08&trainerId=...&kelasId=...  (semua opsional)
 // Rekap fee per trainer dari sesi status "selesai" x rate_per_sesi kelas
@@ -27,21 +27,25 @@ export async function GET(req: NextRequest) {
       status: sesi.status,
       kelasId: kelas.id,
       kelasNama: kelas.nama,
-      trainerId: trainer.id,
-      trainerNama: trainer.nama,
-      ratePerSesi: feeRule.ratePerSesi,
-      skema: feeRule.skema,
-      totalPaket: feeRule.totalPaket,
-      targetSesi: feeRule.targetSesi,
+      // Trainer yang beneran ngajar sesi ini - bisa beda dari trainer
+      // utama kelas kalau kelasnya diajar gantian.
+      sesiTrainerId: sesi.trainerId,
+      kelasTrainerId: kelas.trainerId,
       payslipStatus: payslip.status,
     })
     .from(sesi)
     .leftJoin(kelas, eq(sesi.kelasId, kelas.id))
-    .leftJoin(trainer, eq(kelas.trainerId, trainer.id))
-    .leftJoin(feeRule, eq(feeRule.kelasId, kelas.id))
     .leftJoin(payslipItem, eq(payslipItem.sesiId, sesi.id))
     .leftJoin(payslip, eq(payslip.id, payslipItem.payslipId))
     .where(eq(sesi.status, "selesai"));
+
+  // Nama trainer diambil terpisah - join langsung bakal ngikut trainer
+  // kelas, padahal yang kita mau trainer per sesi.
+  const namaTrainer = Object.fromEntries(
+    (await db.select({ id: trainer.id, nama: trainer.nama }).from(trainer)).map(
+      (t) => [t.id, t.nama]
+    )
+  );
 
   // Rate skema paket = totalPaket / SELURUH sesi kelasnya, jadi harus
   // dihitung sebelum filter periode/trainer/kelas dipasang. Kalau dihitung
@@ -53,7 +57,9 @@ export async function GET(req: NextRequest) {
     rows = rows.filter((r) => r.tanggal?.startsWith(periode));
   }
   if (trainerIdFilter) {
-    rows = rows.filter((r) => r.trainerId === trainerIdFilter);
+    rows = rows.filter(
+      (r) => trainerEfektif(r.sesiTrainerId, r.kelasTrainerId) === trainerIdFilter
+    );
   }
   if (kelasIdFilter) {
     rows = rows.filter((r) => r.kelasId === kelasIdFilter);
@@ -76,13 +82,14 @@ export async function GET(req: NextRequest) {
   const rekap: Record<string, Rekap> = {};
 
   for (const r of rows) {
-    if (!r.trainerId) continue;
+    const tid = trainerEfektif(r.sesiTrainerId, r.kelasTrainerId);
+    if (!tid) continue;
     // Dari peta yang dihitung di atas - udah bener buat flat maupun paket.
     const rate = rateMap[r.sesiId] ?? 0;
-    if (!rekap[r.trainerId]) {
-      rekap[r.trainerId] = {
-        trainerId: r.trainerId,
-        trainerNama: r.trainerNama ?? "-",
+    if (!rekap[tid]) {
+      rekap[tid] = {
+        trainerId: tid,
+        trainerNama: namaTrainer[tid] ?? "-",
         jumlahSesi: 0,
         totalFee: 0,
         sesiLunas: 0,
@@ -94,7 +101,7 @@ export async function GET(req: NextRequest) {
         kelasIds: new Set(),
       };
     }
-    const acc = rekap[r.trainerId];
+    const acc = rekap[tid];
     acc.jumlahSesi += 1;
     acc.totalFee += rate;
     if (r.kelasId) acc.kelasIds.add(r.kelasId);

@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
-import { sesi, kelas, trainer, feeRule, payslipItem, payslip } from "@/db/schema";
+import { sesi, kelas, trainer, payslipItem, payslip } from "@/db/schema";
 import { eq } from "drizzle-orm";
-import { hitungRatePerSesi } from "@/lib/feeQuery";
+import { hitungRatePerSesi, trainerEfektif } from "@/lib/feeQuery";
 
 // GET /api/fee/detail?trainerId=...
 // Detail sesi "selesai" milik satu trainer (dikelompokkan per kelas lewat
@@ -30,20 +30,26 @@ export async function GET(req: NextRequest) {
       pertemuanKe: sesi.pertemuanKe,
       tanggal: sesi.tanggal,
       materi: sesi.materi,
-      ratePerSesi: feeRule.ratePerSesi,
+      sesiTrainerId: sesi.trainerId,
+      kelasTrainerId: kelas.trainerId,
       payslipId: payslipItem.payslipId,
       payslipPeriode: payslip.periode,
       payslipStatus: payslip.status,
     })
     .from(sesi)
     .innerJoin(kelas, eq(sesi.kelasId, kelas.id))
-    .leftJoin(feeRule, eq(feeRule.kelasId, kelas.id))
     .leftJoin(payslipItem, eq(payslipItem.sesiId, sesi.id))
-    .leftJoin(payslip, eq(payslip.id, payslipItem.payslipId))
-    .where(eq(kelas.trainerId, trainerId));
+    .leftJoin(payslip, eq(payslip.id, payslipItem.payslipId));
 
   const detail = rows
-    .filter((r) => r.status === "selesai")
+    // Sesi milik trainer ini = yang dia ajar sendiri, ATAU sesi tanpa
+    // trainer di kelas yang dia pegang. Bukan lagi "semua sesi di kelasnya" -
+    // satu kelas bisa diajar beberapa trainer.
+    .filter(
+      (r) =>
+        r.status === "selesai" &&
+        trainerEfektif(r.sesiTrainerId, r.kelasTrainerId) === trainerId
+    )
     .map((r) => ({
       sesiId: r.sesiId,
       kelasId: r.kelasId,

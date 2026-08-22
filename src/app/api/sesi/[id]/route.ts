@@ -16,6 +16,8 @@ export async function PATCH(
       ...(body.materi !== undefined && { materi: body.materi }),
       ...(body.tanggal !== undefined && { tanggal: body.tanggal }),
       ...(body.linkRecord !== undefined && { linkRecord: body.linkRecord }),
+      // "" dari dropdown = balik ngikut trainer utama kelas.
+      ...(body.trainerId !== undefined && { trainerId: body.trainerId || null }),
     })
     .where(eq(sesi.id, id))
     .returning();

@@ -2,6 +2,20 @@
 import { useEffect, useState } from "react";
 
 type Trainer = { id: string; nama: string };
+
+/** Rincian satu trainer di satu kelas - dipakai buat panel analytics. */
+type TrainerRingkas = {
+  trainerId: string;
+  trainerNama: string;
+  utama: boolean;
+  skema: string;
+  ratePerSesi: number | null;
+  totalPaket: number | null;
+  jumlahSesi: number;
+  sesiSelesai: number;
+  totalFee: number;
+};
+
 type Kelas = {
   id: string;
   nama: string;
@@ -11,6 +25,8 @@ type Kelas = {
   tanggalMulai: string | null;
   navigatorSheetId: string | null;
   navigatorLastSyncedAt: string | null;
+  trainers: TrainerRingkas[];
+  totalFeeKelas: number;
 };
 
 type Sesi = { id: string; kelasId: string; status: string };
@@ -33,6 +49,17 @@ const MAPPABLE_FIELDS = [
   { key: "record", label: "Link record", wajib: false },
 ];
 
+/** Format rupiah ringkas buat card - "Rp 6,7jt" lebih kebaca dari 7 digit. */
+function rupiah(v: number): string {
+  if (v >= 1_000_000) {
+    const jt = v / 1_000_000;
+    // Satu desimal cuma kalau perlu, biar "Rp 5jt" gak jadi "Rp 5,0jt".
+    return `Rp ${(Math.round(jt * 10) / 10).toLocaleString("id-ID")}jt`;
+  }
+  if (v >= 1000) return `Rp ${Math.round(v / 1000).toLocaleString("id-ID")}rb`;
+  return `Rp ${v.toLocaleString("id-ID")}`;
+}
+
 const TIPE_LABEL: Record<string, string> = {
   bootcamp: "Bootcamp",
   private: "Private",
@@ -47,11 +74,11 @@ export default function KelasPage() {
   const [nama, setNama] = useState("");
   const [tipe, setTipe] = useState("bootcamp");
   const [trainerId, setTrainerId] = useState("");
-  const [rate, setRate] = useState("");
-  // "flat" = bayar per sesi, "paket" = total kelas dikunci & dibagi rata.
-  const [skema, setSkema] = useState<"flat" | "paket">("flat");
-  const [totalPaket, setTotalPaket] = useState("");
-  const [targetSesi, setTargetSesi] = useState("");
+  // Fee per trainer di kelas ini. Key = trainerId. Satu kelas bisa diajar
+  // beberapa trainer dengan kesepakatan beda-beda.
+  const [feePerTrainer, setFeePerTrainer] = useState<
+    Record<string, { skema: "flat" | "paket"; rate: string; total: string; target: string }>
+  >({});
   const [sheetLink, setSheetLink] = useState("");
   const [loading, setLoading] = useState(false);
   const [syncingId, setSyncingId] = useState<string | null>(null);
@@ -68,6 +95,25 @@ export default function KelasPage() {
   const [tanggalMulai, setTanggalMulai] = useState("");
   const [formMsg, setFormMsg] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  type BarisFee = { skema: "flat" | "paket"; rate: string; total: string; target: string };
+  const feeKosong: BarisFee = { skema: "flat", rate: "", total: "", target: "" };
+
+  /** Ambil (atau bikin) baris fee buat satu trainer di form. */
+  function feeOf(tid: string) {
+    return feePerTrainer[tid] ?? feeKosong;
+  }
+
+  function setFee(tid: string, patch: Partial<BarisFee>) {
+    setFeePerTrainer((prev) => ({
+      ...prev,
+      [tid]: { ...(prev[tid] ?? feeKosong), ...patch },
+    }));
+  }
+
+  /** Trainer yang muncul di form fee: trainer utama + yang ditambah manual. */
+  const [trainerTambahan, setTrainerTambahan] = useState<string[]>([]);
+  const trainerForm = Array.from(new Set([trainerId, ...trainerTambahan].filter(Boolean)));
 
   async function load() {
     const [k, t, s] = await Promise.all([
@@ -133,10 +179,8 @@ export default function KelasPage() {
     setNama("");
     setTipe("bootcamp");
     setTrainerId(trainers[0]?.id ?? "");
-    setRate("");
-    setSkema("flat");
-    setTotalPaket("");
-    setTargetSesi("");
+    setFeePerTrainer({});
+    setTrainerTambahan([]);
     setTanggalMulai("");
     setSheetLink("");
     setPreview(null);
@@ -162,26 +206,57 @@ export default function KelasPage() {
     setFormMsg(null);
     setShowForm(true);
 
-    // Fee ada di tabel terpisah, jadi diambil belakangan.
-    setRate("");
-    setSkema("flat");
-    setTotalPaket("");
-    setTargetSesi("");
+    // Fee ada di tabel terpisah (satu baris per trainer), diambil belakangan.
+    setFeePerTrainer({});
+    setTrainerTambahan([]);
     try {
       const res = await fetch(`/api/kelas/${k.id}`);
       if (res.ok) {
         const detail = await res.json();
-        setSkema(detail.skema === "paket" ? "paket" : "flat");
-        if (detail.ratePerSesi !== null) setRate(String(detail.ratePerSesi));
-        if (detail.totalPaket !== null) setTotalPaket(String(detail.totalPaket));
-        if (detail.targetSesi !== null) setTargetSesi(String(detail.targetSesi));
+        const map: Record<string, BarisFee> = {};
+        for (const t of detail.trainers ?? []) {
+          map[t.trainerId] = {
+            skema: t.skema === "paket" ? "paket" : "flat",
+            rate: t.ratePerSesi !== null ? String(t.ratePerSesi) : "",
+            total: t.totalPaket !== null ? String(t.totalPaket) : "",
+            target: t.targetSesi !== null ? String(t.targetSesi) : "",
+          };
+        }
+        setFeePerTrainer(map);
+        // Trainer selain yang utama ditandai sebagai "tambahan" biar
+        // barisnya tetap kelihatan di form.
+        setTrainerTambahan(
+          (detail.trainers ?? [])
+            .filter((t: TrainerRingkas) => !t.utama)
+            .map((t: TrainerRingkas) => t.trainerId)
+        );
       }
     } catch {
-      // Rate gagal keambil bukan alasan buat batalin edit - field-nya
-      // dibiarin kosong, dan kalau user gak nyentuh, rate lama tetap aman.
+      // Fee gagal keambil bukan alasan buat batalin edit - field-nya
+      // dibiarin kosong, dan kalau user gak nyentuh, fee lama tetap aman.
     }
 
     if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  /** Ubah state form fee jadi payload buat API. */
+  function payloadFee() {
+    return trainerForm
+      .map((tid) => {
+        const f = feeOf(tid);
+        if (f.skema === "paket") {
+          if (!f.total || !f.target) return null;
+          return {
+            trainerId: tid,
+            skema: "paket",
+            totalPaket: Number(f.total),
+            targetSesi: Number(f.target),
+          };
+        }
+        if (!f.rate) return null;
+        return { trainerId: tid, skema: "flat", ratePerSesi: Number(f.rate) };
+      })
+      .filter(Boolean);
   }
 
   async function submitKelas(e: React.FormEvent) {
@@ -204,10 +279,7 @@ export default function KelasPage() {
             // Cuma kirim mapping kalau user emang nyetel ulang di sesi edit
             // ini; kalau nggak, mapping lama di DB dibiarin apa adanya.
             ...(Object.keys(columnMap).length ? { navigatorColumnMap: columnMap } : {}),
-            skema,
-            ...(skema === "paket"
-              ? { totalPaket: Number(totalPaket), targetSesi: Number(targetSesi) }
-              : { ratePerSesi: rate === "" ? null : Number(rate) }),
+            trainers: payloadFee(),
           }),
         });
         const data = await res.json();
@@ -237,25 +309,12 @@ export default function KelasPage() {
         }
         // Fee disimpan di tabel terpisah, jadi baru dikirim setelah
         // kelasnya jadi dan kita punya id-nya.
-        const feeBody =
-          skema === "paket"
-            ? totalPaket && targetSesi
-              ? {
-                  kelasId: newKelas.id,
-                  skema: "paket",
-                  totalPaket: Number(totalPaket),
-                  targetSesi: Number(targetSesi),
-                }
-              : null
-            : rate
-              ? { kelasId: newKelas.id, skema: "flat", ratePerSesi: Number(rate) }
-              : null;
-
-        if (feeBody) {
-          const feeRes = await fetch("/api/fee-rule", {
-            method: "POST",
+        const fees = payloadFee();
+        if (fees.length) {
+          const feeRes = await fetch(`/api/kelas/${newKelas.id}`, {
+            method: "PATCH",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(feeBody),
+            body: JSON.stringify({ trainers: fees }),
           });
           if (!feeRes.ok) {
             // Kelasnya udah kebikin, jadi jangan dianggap gagal total -
@@ -443,20 +502,6 @@ export default function KelasPage() {
               </select>
             </div>
             <div className="flex flex-col gap-1.5">
-              <label htmlFor="kelas-skema" className="font-geist text-label-sm text-text-muted">
-                Skema fee
-              </label>
-              <select
-                id="kelas-skema"
-                className={inputClass}
-                value={skema}
-                onChange={(e) => setSkema(e.target.value as "flat" | "paket")}
-              >
-                <option value="flat">Per sesi</option>
-                <option value="paket">Total paket</option>
-              </select>
-            </div>
-            <div className="flex flex-col gap-1.5">
               <label
                 htmlFor="kelas-tanggal"
                 className="font-geist text-label-sm text-text-muted"
@@ -472,91 +517,144 @@ export default function KelasPage() {
               />
             </div>
 
-            {skema === "flat" ? (
-              <div className="flex flex-col gap-1.5">
-                <label htmlFor="kelas-rate" className="font-geist text-label-sm text-text-muted">
-                  Rate per sesi (Rp, opsional)
-                </label>
-                <input
-                  id="kelas-rate"
-                  className={inputClass}
-                  placeholder="150000"
-                  type="number"
-                  value={rate}
-                  onChange={(e) => setRate(e.target.value)}
-                />
-              </div>
-            ) : (
-              <>
-                <div className="flex flex-col gap-1.5">
-                  <label
-                    htmlFor="kelas-total"
-                    className="font-geist text-label-sm text-text-muted"
-                  >
-                    Total harga kelas (Rp)
-                  </label>
-                  <input
-                    id="kelas-total"
-                    className={inputClass}
-                    placeholder="10000000"
-                    type="number"
-                    value={totalPaket}
-                    onChange={(e) => setTotalPaket(e.target.value)}
-                  />
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <label
-                    htmlFor="kelas-target"
-                    className="font-geist text-label-sm text-text-muted"
-                  >
-                    Target jumlah sesi
-                  </label>
-                  <input
-                    id="kelas-target"
-                    className={inputClass}
-                    placeholder="15"
-                    type="number"
-                    value={targetSesi}
-                    onChange={(e) => setTargetSesi(e.target.value)}
-                  />
-                </div>
-              </>
-            )}
           </div>
 
-          {/* Preview hitungan - biar admin lihat angkanya sebelum simpan,
-              termasuk penyesuaian pembulatan di sesi terakhir. */}
-          {skema === "paket" && Number(totalPaket) > 0 && Number(targetSesi) > 0 && (
-            <div className="rounded-lg border border-outline-variant bg-surface-container-low p-4 font-inter text-body-sm">
-              {(() => {
-                const total = Number(totalPaket);
-                const n = Number(targetSesi);
-                const dasar = Math.round(total / n);
-                const terakhir = total - dasar * (n - 1);
-                const rp = (v: number) => `Rp ${v.toLocaleString("id-ID")}`;
-                return (
-                  <>
-                    <p className="text-on-surface-variant">
-                      Sesi 1–{n - 1}: <strong>{rp(dasar)}</strong> per sesi
-                      {terakhir !== dasar && (
-                        <>
-                          , sesi ke-{n}: <strong>{rp(terakhir)}</strong>
-                        </>
-                      )}
-                    </p>
-                    <p className="mt-1 text-text-muted">
-                      Total dibayar tetap {rp(total)} — sisa pembulatan diserap di sesi
-                      terakhir.
-                    </p>
-                    <p className="mt-1 text-text-muted">
-                      Kalau jumlah sesi berubah, rate per sesi ikut menyesuaikan supaya
-                      totalnya tetap {rp(total)}.
-                    </p>
-                  </>
-                );
-              })()}
+          {/* Fee per trainer. Satu kelas bisa diajar beberapa trainer dengan
+              kesepakatan beda-beda, jadi tiap trainer punya barisnya sendiri. */}
+          <div className="flex flex-col gap-stack-sm rounded-lg border border-outline-variant bg-surface-container-low p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3 className="font-geist text-label-md text-primary">Fee per trainer</h3>
+              {trainers.length > trainerForm.length && (
+                <select
+                  className="rounded-lg border border-outline-variant bg-surface px-3 py-1.5 font-inter text-body-sm"
+                  value=""
+                  onChange={(e) => {
+                    if (e.target.value) setTrainerTambahan((v) => [...v, e.target.value]);
+                  }}
+                >
+                  <option value="">+ Tambah trainer</option>
+                  {trainers
+                    .filter((t) => !trainerForm.includes(t.id))
+                    .map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.nama}
+                      </option>
+                    ))}
+                </select>
+              )}
             </div>
-          )}
+
+            {trainerForm.map((tid) => {
+              const f = feeOf(tid);
+              const nm = trainers.find((t) => t.id === tid)?.nama ?? "-";
+              const utama = tid === trainerId;
+              return (
+                <div
+                  key={tid}
+                  className="flex flex-col gap-stack-sm rounded-lg border border-outline-variant/60 bg-surface p-3"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-geist text-label-md text-primary">
+                      {nm}
+                      {utama && (
+                        <span className="ml-2 rounded-full bg-surface-container px-2 py-0.5 font-inter text-label-sm text-text-muted">
+                          utama
+                        </span>
+                      )}
+                    </span>
+                    {!utama && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setTrainerTambahan((v) => v.filter((x) => x !== tid))
+                        }
+                        className="font-geist text-label-sm text-text-muted transition-colors hover:text-error"
+                      >
+                        Hapus
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-stack-sm sm:grid-cols-3">
+                    <div className="flex flex-col gap-1.5">
+                      <label className="font-geist text-label-sm text-text-muted">
+                        Skema
+                      </label>
+                      <select
+                        className={inputClass}
+                        value={f.skema}
+                        onChange={(e) =>
+                          setFee(tid, { skema: e.target.value as "flat" | "paket" })
+                        }
+                      >
+                        <option value="flat">Per sesi</option>
+                        <option value="paket">Total paket</option>
+                      </select>
+                    </div>
+
+                    {f.skema === "flat" ? (
+                      <div className="flex flex-col gap-1.5 sm:col-span-2">
+                        <label className="font-geist text-label-sm text-text-muted">
+                          Rate per sesi (Rp)
+                        </label>
+                        <input
+                          className={inputClass}
+                          placeholder="150000"
+                          type="number"
+                          value={f.rate}
+                          onChange={(e) => setFee(tid, { rate: e.target.value })}
+                        />
+                      </div>
+                    ) : (
+                      <>
+                        <div className="flex flex-col gap-1.5">
+                          <label className="font-geist text-label-sm text-text-muted">
+                            Total buat trainer ini (Rp)
+                          </label>
+                          <input
+                            className={inputClass}
+                            placeholder="5000000"
+                            type="number"
+                            value={f.total}
+                            onChange={(e) => setFee(tid, { total: e.target.value })}
+                          />
+                        </div>
+                        <div className="flex flex-col gap-1.5">
+                          <label className="font-geist text-label-sm text-text-muted">
+                            Target sesi dia
+                          </label>
+                          <input
+                            className={inputClass}
+                            placeholder="8"
+                            type="number"
+                            value={f.target}
+                            onChange={(e) => setFee(tid, { target: e.target.value })}
+                          />
+                        </div>
+                      </>
+                    )}
+                  </div>
+
+                  {/* Preview hitungan - biar admin lihat angkanya sebelum simpan,
+                      termasuk penyesuaian pembulatan di sesi terakhir. */}
+                  {f.skema === "paket" && Number(f.total) > 0 && Number(f.target) > 0 && (
+                    <p className="font-inter text-body-sm text-text-muted">
+                      {(() => {
+                        const total = Number(f.total);
+                        const n = Number(f.target);
+                        const dasar = Math.round(total / n);
+                        const akhir = total - dasar * (n - 1);
+                        const rp = (v: number) => `Rp ${v.toLocaleString("id-ID")}`;
+                        return n > 1
+                          ? `${rp(dasar)} per sesi (sesi ke-${n}: ${rp(akhir)}) — total tetap ${rp(total)} walau jumlah sesinya berubah.`
+                          : `${rp(total)} buat 1 sesi.`;
+                      })()}
+                    </p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
 
           <div className="flex flex-col gap-stack-sm">
             <label htmlFor="kelas-sheet" className="font-geist text-label-sm text-text-muted">
@@ -722,9 +820,11 @@ export default function KelasPage() {
               <div className="flex flex-col gap-2 font-inter text-body-sm text-on-surface-variant">
                 <div className="flex items-center gap-2">
                   <span className="material-symbols-outlined text-[18px] text-outline">
-                    person
+                    {(k.trainers?.length ?? 0) > 1 ? "group" : "person"}
                   </span>
-                  {k.trainerNama ?? "-"}
+                  {(k.trainers?.length ?? 0) > 1
+                    ? `${k.trainers.length} trainer`
+                    : (k.trainerNama ?? "-")}
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="material-symbols-outlined text-[18px] text-outline">
@@ -762,6 +862,46 @@ export default function KelasPage() {
                   </p>
                 )}
               </div>
+
+              {/* Analytics per trainer: siapa ngajar berapa sesi, rate-nya
+                  berapa, dan total fee yang udah kekumpul dari sesi selesai. */}
+              {k.trainers?.length > 0 && (
+                <div className="mt-4 flex flex-col gap-2 border-t border-outline-variant/60 pt-4">
+                  <div className="flex items-center justify-between font-geist text-label-sm text-text-muted">
+                    <span>Trainer &amp; fee</span>
+                    {k.trainers.length > 1 && (
+                      <span className="tabular-nums">
+                        Total {rupiah(k.totalFeeKelas)}
+                      </span>
+                    )}
+                  </div>
+
+                  {k.trainers.map((t) => (
+                    <div
+                      key={t.trainerId}
+                      className="flex items-baseline justify-between gap-3 font-inter text-body-sm"
+                    >
+                      <span className="min-w-0 flex-1 truncate text-on-surface-variant">
+                        {t.trainerNama}
+                        {t.skema === "paket" && (
+                          <span className="ml-1.5 rounded bg-surface-container px-1.5 py-0.5 font-geist text-label-sm text-text-muted">
+                            paket
+                          </span>
+                        )}
+                      </span>
+                      <span className="whitespace-nowrap text-label-sm text-text-muted tabular-nums">
+                        {t.sesiSelesai}/{t.jumlahSesi} sesi
+                        {t.ratePerSesi !== null && (
+                          <> &middot; {rupiah(t.ratePerSesi)}/sesi</>
+                        )}
+                      </span>
+                      <span className="whitespace-nowrap font-geist text-label-md text-primary tabular-nums">
+                        {rupiah(t.totalFee)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
 
               {/* Aksi sync Navigator */}
               <div className="mt-4">

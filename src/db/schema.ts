@@ -13,6 +13,9 @@ export const kelas = sqliteTable("kelas", {
   id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   nama: text("nama").notNull(),
   tipe: text("tipe").notNull(), // bootcamp | private | mbc | corporate
+  // Trainer utama / penanggung jawab kelas. Satu kelas boleh diajar lebih
+  // dari satu trainer - itu diatur per sesi lewat sesi.trainerId. Kolom ini
+  // jadi default buat sesi yang trainer-nya gak diisi.
   trainerId: text("trainer_id").notNull().references(() => trainer.id),
   tanggalMulai: text("tanggal_mulai"),
   // ID Google Sheet Navigator kelas ini (dari URL sheet: /d/{INI_ID}/edit).
@@ -29,6 +32,10 @@ export const kelas = sqliteTable("kelas", {
 export const sesi = sqliteTable("sesi", {
   id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   kelasId: text("kelas_id").notNull().references(() => kelas.id),
+  // Siapa yang ngajar sesi INI. null = pakai trainer utama kelasnya.
+  // Diisi otomatis sama sync Navigator dari kolom "Trainer" di sheet, atau
+  // manual lewat form sesi kalau kelasnya diajar gantian.
+  trainerId: text("trainer_id").references(() => trainer.id),
   pertemuanKe: integer("pertemuan_ke").notNull(),
   tanggal: text("tanggal"),
   materi: text("materi"),
@@ -38,23 +45,34 @@ export const sesi = sqliteTable("sesi", {
   createdAt: text("created_at").default(sql`(current_timestamp)`),
 });
 
-// Dua cara ngitung fee sebuah kelas, dibedain lewat kolom `skema`:
+// Aturan fee untuk SATU trainer di SATU kelas.
+//
+// Kenapa per (kelas, trainer) dan bukan per kelas? Karena satu kelas bisa
+// diajar beberapa trainer dengan kesepakatan beda-beda - mis. di kelas yang
+// sama Budi dapat paket 5jt dan Andi dapat paket 4jt. Tiap baris di sini
+// mewakili satu kesepakatan.
+//
+// `trainerId` null = aturan lama sebelum fitur multi-trainer, berlaku buat
+// semua trainer di kelas itu. Dipertahankan biar data lama tetap kebaca.
+//
+// Dua cara ngitung, dibedain lewat kolom `skema`:
 //
 //   flat  - dibayar per sesi. `ratePerSesi` yang dipakai, `totalPaket` null.
 //           Sesi nambah = fee ikut nambah.
 //
-//   paket - borongan. Harga kelas udah disepakati di `totalPaket` (mis. 10jt)
-//           dan gak berubah walau jumlah sesinya meleset dari `targetSesi`.
-//           Rate tiap sesi dihitung on-the-fly = totalPaket / jumlah sesi
-//           yang beneran ada. Lihat hitungRatePaket() di src/lib/fee.ts -
-//           sisa pembagian diserap di sesi terakhir biar jumlahnya persis.
+//   paket - borongan. Jatah trainer ini udah disepakati di `totalPaket`
+//           (mis. 5jt) dan gak berubah walau jumlah sesinya meleset dari
+//           `targetSesi`. Rate tiap sesi dihitung on-the-fly = totalPaket
+//           dibagi jumlah sesi YANG DIA AJAR. Lihat src/lib/fee.ts - sisa
+//           pembagian diserap di sesi terakhir biar jumlahnya persis.
 //
 // `ratePerSesi` tetap notNull buat skema paket (diisi hasil bagi rata) supaya
 // query lama yang cuma baca kolom itu gak pecah, tapi angka yang dipakai
-// buat duit beneran selalu dari hitungRatePaket().
+// buat duit beneran selalu lewat rateSesi() di src/lib/fee.ts.
 export const feeRule = sqliteTable("fee_rule", {
   id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   kelasId: text("kelas_id").notNull().references(() => kelas.id),
+  trainerId: text("trainer_id").references(() => trainer.id),
   ratePerSesi: real("rate_per_sesi").notNull(),
   skema: text("skema").notNull().default("flat"), // flat | paket
   totalPaket: real("total_paket"),

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
-import { payslip, payslipItem, sesi, kelas, trainer, feeRule } from "@/db/schema";
+import { payslip, payslipItem, sesi, kelas, trainer } from "@/db/schema";
 import { eq, inArray } from "drizzle-orm";
 import { hitungRatePerSesi } from "@/lib/feeQuery";
 

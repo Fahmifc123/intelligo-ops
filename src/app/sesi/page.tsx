@@ -1,7 +1,8 @@
 "use client";
 import { useEffect, useState } from "react";
 
-type Kelas = { id: string; nama: string };
+type Trainer = { id: string; nama: string };
+type Kelas = { id: string; nama: string; trainerId: string; trainerNama: string | null };
 type Sesi = {
   id: string;
   kelasId: string;
@@ -11,6 +12,9 @@ type Sesi = {
   materi: string | null;
   status: string;
   linkRecord: string | null;
+  // null = ngikut trainer utama kelas. Diisi kalau kelasnya diajar gantian.
+  trainerId: string | null;
+  kelasTrainerId: string | null;
 };
 
 export default function SesiPage() {
@@ -21,6 +25,9 @@ export default function SesiPage() {
   const [tanggal, setTanggal] = useState("");
   const [materi, setMateri] = useState("");
   const [linkRecord, setLinkRecord] = useState("");
+  // "" = ikut trainer utama kelas. Diisi kalau sesi ini diajar orang lain.
+  const [sesiTrainerId, setSesiTrainerId] = useState("");
+  const [trainerList, setTrainerList] = useState<Trainer[]>([]);
   const [loading, setLoading] = useState(false);
   const [showForm, setShowForm] = useState(false);
   // Filter tampilan daftar sesi. Dipisah dari `kelasId` (yang dipakai form
@@ -29,12 +36,14 @@ export default function SesiPage() {
   const [filterStatus, setFilterStatus] = useState("all");
 
   async function load() {
-    const [s, k] = await Promise.all([
+    const [s, k, t] = await Promise.all([
       fetch("/api/sesi").then((r) => r.json()),
       fetch("/api/kelas").then((r) => r.json()),
+      fetch("/api/trainer").then((r) => r.json()),
     ]);
     setSesiList(s);
     setKelasList(k);
+    setTrainerList(t);
     if (k.length && !kelasId) setKelasId(k[0].id);
   }
 
@@ -56,13 +65,31 @@ export default function SesiPage() {
         tanggal: tanggal || undefined,
         materi: materi || undefined,
         linkRecord: linkRecord || undefined,
+        trainerId: sesiTrainerId || undefined,
       }),
     });
     setPertemuanKe("");
     setTanggal("");
     setMateri("");
     setLinkRecord("");
+    setSesiTrainerId("");
     setLoading(false);
+    load();
+  }
+
+  /** Nama trainer yang ngajar sesi ini (sesi.trainerId ?? trainer kelas). */
+  function namaTrainerSesi(s: Sesi): string {
+    const tid = s.trainerId ?? s.kelasTrainerId;
+    return trainerList.find((t) => t.id === tid)?.nama ?? "-";
+  }
+
+  /** Ganti trainer sesi langsung dari tabel. "" = balik ke trainer kelas. */
+  async function ubahTrainer(s: Sesi, tid: string) {
+    await fetch(`/api/sesi/${s.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ trainerId: tid }),
+    });
     load();
   }
 
@@ -171,6 +198,31 @@ export default function SesiPage() {
                 value={pertemuanKe}
                 onChange={(e) => setPertemuanKe(e.target.value)}
               />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor="sesi-trainer" className="font-geist text-label-sm text-text-muted">
+                Trainer
+              </label>
+              <select
+                id="sesi-trainer"
+                className={inputClass}
+                value={sesiTrainerId}
+                onChange={(e) => setSesiTrainerId(e.target.value)}
+              >
+                {/* Default: ngikut trainer utama kelas. Diganti cuma kalau
+                    kelasnya emang diajar gantian. */}
+                <option value="">
+                  Trainer kelas
+                  {kelasList.find((k) => k.id === kelasId)?.trainerNama
+                    ? ` (${kelasList.find((k) => k.id === kelasId)?.trainerNama})`
+                    : ""}
+                </option>
+                {trainerList.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.nama}
+                  </option>
+                ))}
+              </select>
             </div>
             <div className="flex flex-col gap-1.5">
               <label htmlFor="sesi-tanggal" className="font-geist text-label-sm text-text-muted">
@@ -369,6 +421,25 @@ export default function SesiPage() {
                     <span className="flex items-center gap-1.5">
                       <span className="material-symbols-outlined text-[16px]">schedule</span>
                       {s.tanggal ?? "Tanggal belum diisi"}
+                    </span>
+                    {/* Trainer bisa diganti langsung di sini - kelas yang
+                        diajar gantian gak perlu buka form edit. */}
+                    <span className="flex items-center gap-1.5">
+                      <span className="material-symbols-outlined text-[16px]">person</span>
+                      <select
+                        value={s.trainerId ?? ""}
+                        onChange={(e) => ubahTrainer(s, e.target.value)}
+                        aria-label={`Trainer sesi ${s.pertemuanKe}`}
+                        title={`Trainer: ${namaTrainerSesi(s)}`}
+                        className="cursor-pointer rounded border border-transparent bg-transparent py-0.5 pr-1 font-inter text-label-sm text-text-muted transition-colors hover:border-outline-variant hover:text-primary focus:border-outline-variant focus:outline-none"
+                      >
+                        <option value="">{namaTrainerSesi(s)} (trainer kelas)</option>
+                        {trainerList.map((t) => (
+                          <option key={t.id} value={t.id}>
+                            {t.nama}
+                          </option>
+                        ))}
+                      </select>
                     </span>
                     {s.linkRecord && (
                       <a
