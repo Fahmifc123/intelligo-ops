@@ -36,6 +36,9 @@ type Payslip = {
   createdAt: string;
   finalizedAt: string | null;
   paidAt: string | null;
+  // Tanggal estimasi transfer, "YYYY-MM-DD" - diisi manual, dipakai
+  // sebagai kolom "jadwal_pembayaran" pas export ke format n8n.
+  jadwalPembayaran: string | null;
   jumlahSesi: number;
   totalFee: number;
   sesi: {
@@ -89,6 +92,14 @@ export default function PayslipPage() {
   // render/useMemo) - itungan hari tunggakan gak perlu update tiap detik,
   // dan React nolak impure call langsung di badan komponen/useMemo.
   const [now] = useState(() => Date.now());
+
+  // Modal export ke format n8n. null = tertutup.
+  const [exportPayslip, setExportPayslip] = useState<Payslip | null>(null);
+  const [exportJadwal, setExportJadwal] = useState("");
+  const [exportSaving, setExportSaving] = useState(false);
+  const [exportRows, setExportRows] = useState<Record<string, string> | null>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
+  const [exportCopied, setExportCopied] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -305,6 +316,75 @@ export default function PayslipPage() {
   async function batalkan(id: string) {
     const res = await fetch(`/api/payslip/${id}`, { method: "DELETE" });
     if (res.ok) load();
+  }
+
+  /** Buka modal export n8n - isi jadwal pembayaran dari yang udah ada (kalau ada). */
+  function openExport(p: Payslip) {
+    setExportPayslip(p);
+    setExportJadwal(p.jadwalPembayaran ?? "");
+    setExportRows(null);
+    setExportError(null);
+    setExportCopied(false);
+  }
+
+  /** Simpan jadwal pembayaran (kalau berubah), lalu ambil baris export siap tempel. */
+  async function generateExport() {
+    if (!exportPayslip) return;
+    setExportSaving(true);
+    setExportError(null);
+    try {
+      if (exportJadwal !== (exportPayslip.jadwalPembayaran ?? "")) {
+        const patchRes = await fetch(`/api/payslip/${exportPayslip.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ jadwalPembayaran: exportJadwal || null }),
+        });
+        if (!patchRes.ok) {
+          const d = await patchRes.json();
+          setExportError(d.error ?? "Gagal simpan jadwal pembayaran");
+          setExportSaving(false);
+          return;
+        }
+      }
+
+      const res = await fetch(`/api/payslip/${exportPayslip.id}/export-n8n`);
+      const data = await res.json();
+      if (!res.ok) {
+        setExportError(data.error ?? "Gagal generate export");
+      } else {
+        setExportRows(data);
+        load(); // refresh biar jadwalPembayaran ke-update di list
+      }
+    } catch (e) {
+      setExportError(e instanceof Error ? e.message : String(e));
+    }
+    setExportSaving(false);
+  }
+
+  /** Satu baris TSV, urutan kolom persis sesuai sheet trigger n8n. */
+  function exportTsvRow(r: Record<string, string>): string {
+    return [
+      r.periode,
+      r.jadwal_pembayaran,
+      r.nama,
+      r.email,
+      r.bank,
+      r.nomor_rekening,
+      r.nama_pemilik_rekening,
+      r.items_json,
+    ].join("\t");
+  }
+
+  async function copyExportRow() {
+    if (!exportRows) return;
+    try {
+      await navigator.clipboard.writeText(exportTsvRow(exportRows));
+      setExportCopied(true);
+      setTimeout(() => setExportCopied(false), 1500);
+    } catch {
+      // Clipboard API bisa ditolak browser - baris tetap kelihatan di
+      // textarea, admin bisa select-all manual.
+    }
   }
 
   // Kelas trainer ini = dia trainer utama ATAU dia salah satu trainer
@@ -736,6 +816,16 @@ export default function PayslipPage() {
                     </button>
                   </>
                 )}
+                {(p.status === "belum_dibayar" || p.status === "lunas") && (
+                  <button
+                    onClick={() => openExport(p)}
+                    title="Generate baris siap tempel ke sheet trigger n8n"
+                    className="flex items-center gap-1.5 rounded-lg border border-outline-variant px-4 py-2 font-geist text-label-sm text-on-surface-variant transition-colors hover:bg-surface-container"
+                  >
+                    <span className="material-symbols-outlined text-[16px]">output</span>
+                    Export n8n
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -995,6 +1085,103 @@ export default function PayslipPage() {
                 </button>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Modal export ke format n8n */}
+      {exportPayslip && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-on-surface/40 p-4">
+          <div className="flex max-h-[85vh] w-full max-w-xl flex-col overflow-hidden rounded-xl bg-surface-container-lowest shadow-lg">
+            <div className="flex items-center justify-between border-b border-outline-variant px-6 py-4">
+              <h2 className="font-geist text-headline-sm text-primary">
+                Export ke n8n &mdash; {exportPayslip.trainerNama}
+              </h2>
+              <button
+                onClick={() => setExportPayslip(null)}
+                className="rounded-full p-1.5 text-text-muted transition-colors hover:bg-surface-container"
+              >
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-6">
+              <div className="flex flex-col gap-stack-md">
+                <div className="flex flex-col gap-1.5">
+                  <label
+                    htmlFor="export-jadwal"
+                    className="font-geist text-label-sm text-text-muted"
+                  >
+                    Jadwal pembayaran (estimasi tanggal transfer)
+                  </label>
+                  <input
+                    id="export-jadwal"
+                    type="date"
+                    className={inputClass}
+                    value={exportJadwal}
+                    onChange={(e) => setExportJadwal(e.target.value)}
+                  />
+                </div>
+
+                <button
+                  type="button"
+                  onClick={generateExport}
+                  disabled={exportSaving || !exportJadwal}
+                  className="self-start rounded-lg bg-primary px-5 py-2 font-geist text-label-md text-on-primary transition-colors hover:bg-primary-container disabled:opacity-50"
+                >
+                  {exportSaving ? "Menyiapkan..." : "Generate baris export"}
+                </button>
+
+                {exportError && (
+                  <p className="rounded-lg border border-error-container bg-error-container/40 p-3 font-inter text-body-sm text-on-error-container">
+                    {exportError}
+                  </p>
+                )}
+
+                {exportRows && (
+                  <div className="flex flex-col gap-stack-sm">
+                    <p className="font-inter text-body-sm text-text-muted">
+                      Satu baris, kolom dipisah tab &mdash; tempel langsung ke baris baru di
+                      Google Sheet trigger n8n-mu (Ctrl+V di kolom pertama, bukan &quot;Paste
+                      special&quot;).
+                    </p>
+                    <textarea
+                      readOnly
+                      value={exportTsvRow(exportRows)}
+                      onClick={(e) => e.currentTarget.select()}
+                      rows={4}
+                      className="w-full resize-none rounded-lg border border-outline-variant bg-surface px-3 py-2 font-inter text-label-sm text-on-surface-variant"
+                    />
+                    <button
+                      type="button"
+                      onClick={copyExportRow}
+                      className="flex items-center justify-center gap-2 self-start rounded-lg border border-outline-variant bg-surface-container-low px-5 py-2 font-geist text-label-md text-primary transition-colors hover:bg-surface-container"
+                    >
+                      <span className="material-symbols-outlined text-[18px]">
+                        {exportCopied ? "check" : "content_copy"}
+                      </span>
+                      {exportCopied ? "Disalin" : "Copy baris"}
+                    </button>
+
+                    <div className="mt-2 rounded-lg border border-outline-variant bg-surface-container-low p-3 font-inter text-label-sm text-text-muted">
+                      <p>
+                        <strong className="text-on-surface-variant">Periode:</strong>{" "}
+                        {exportRows.periode}
+                      </p>
+                      <p>
+                        <strong className="text-on-surface-variant">Nama:</strong>{" "}
+                        {exportRows.nama} ({exportRows.email})
+                      </p>
+                      <p>
+                        <strong className="text-on-surface-variant">Bank:</strong>{" "}
+                        {exportRows.bank} &middot; {exportRows.nomor_rekening} a.n{" "}
+                        {exportRows.nama_pemilik_rekening}
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         </div>
       )}

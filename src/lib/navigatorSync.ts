@@ -1,7 +1,12 @@
-import { parse } from "csv-parse/sync";
 import { db } from "@/db";
 import { sesi, trainer, kelas } from "@/db/schema";
 import { and, eq } from "drizzle-orm";
+import {
+  extractSheetId,
+  fetchSheetRows as fetchSheetRowsBase,
+} from "./googleSheetCsv";
+
+export { extractSheetId };
 
 /**
  * Baca sheet Navigator langsung dari URL export CSV publik Google Sheets -
@@ -44,53 +49,12 @@ function isTrainerTanpaFee(namaSheet: string): boolean {
   return TRAINER_TANPA_FEE.has(namaSheet.trim().toLowerCase());
 }
 
-export function extractSheetId(input: string): string {
-  const trimmed = input.trim();
-  const match = trimmed.match(/\/d\/([a-zA-Z0-9-_]+)/);
-  if (match) return match[1];
-  return trimmed; // udah berupa ID mentah
-}
-
-function csvExportUrl(sheetId: string, tabName: string) {
-  return `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(
-    tabName
-  )}`;
-}
-
+// fetchSheetRows & extractSheetId dipakai bareng sama trainerSync.ts -
+// lihat src/lib/googleSheetCsv.ts. Sheet Navigator, beda dari sheet Google
+// Form trainer, bisa punya banyak tab - makanya tabName di sini defaultnya
+// DEFAULT_TAB_NAME, bukan dibiarin kosong (yang berarti "tab pertama").
 async function fetchSheetRows(sheetId: string, tabName = DEFAULT_TAB_NAME): Promise<string[][]> {
-  const url = csvExportUrl(sheetId, tabName);
-  const res = await fetch(url);
-
-  // PENTING: endpoint gviz Google Sheets gak pernah balikin error status
-  // buat nama tab yang gak ketemu - dia diem-diem jatuh ke tab PALING
-  // KIRI di sheet itu, tetep status 200. Gak ada cara verifikasi nama tab
-  // itu bener tanpa kredensial Google (di luar prinsip project ini: gak
-  // butuh service account apapun). Makanya validasi "tab bener" dilakuin
-  // di sisi lain - lihat previewNavigatorSheet(), yang bandingin header
-  // ketemu vs yang diharapin & warn kalau kelihatan kayak salah tab.
-  if (!res.ok) {
-    throw new Error(
-      `Gagal ambil sheet (status ${res.status}). Pastikan link sheet-nya bener dan sheet udah di-share "Anyone with the link can view".`
-    );
-  }
-
-  const text = await res.text();
-
-  // Kalau sheet private/gak ke-share publik, Google balikin halaman HTML
-  // login, bukan CSV - deteksi dan kasih pesan jelas.
-  if (text.trim().startsWith("<")) {
-    throw new Error(
-      `Sheet belum bisa diakses publik. Buka sheet-nya > Share > ganti jadi "Anyone with the link" > Viewer, baru coba lagi.`
-    );
-  }
-
-  const rows = parse(text, {
-    relax_quotes: true,
-    skip_empty_lines: false,
-    relax_column_count: true,
-  }) as string[][];
-
-  return rows;
+  return fetchSheetRowsBase(sheetId, tabName);
 }
 
 /**

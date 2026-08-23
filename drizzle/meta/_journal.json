@@ -71,6 +71,13 @@
       "when": 1787479712744,
       "tag": "0009_lean_shatterstar",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1787495245030,
+      "tag": "0010_silly_scarecrow",
+      "breakpoints": true
     }
   ]
 }

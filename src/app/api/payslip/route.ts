@@ -20,6 +20,7 @@ export async function GET(req: NextRequest) {
       catatan: payslip.catatan,
       createdAt: payslip.createdAt,
       finalizedAt: payslip.finalizedAt,
+      jadwalPembayaran: payslip.jadwalPembayaran,
     })
     .from(payslip)
     .leftJoin(trainer, eq(payslip.trainerId, trainer.id));

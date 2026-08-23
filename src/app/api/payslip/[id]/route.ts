@@ -17,7 +17,10 @@ const ALLOWED_TRANSITIONS: Record<Status, Status[]> = {
   lunas: [],
 };
 
-// PATCH /api/payslip/[id] { status: "belum_dibayar" | "lunas" | "draft" }
+// PATCH /api/payslip/[id]
+// { status?: "belum_dibayar" | "lunas" | "draft", jadwalPembayaran?: "YYYY-MM-DD" | null }
+// Dua-duanya opsional & independen - body boleh cuma isi jadwalPembayaran
+// tanpa nyentuh status (mis. dari form "isi jadwal buat export n8n").
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -25,9 +28,25 @@ export async function PATCH(
   const { id } = await params;
   const body = await req.json();
 
-  if (!VALID_STATUS.includes(body.status)) {
+  if (body.status === undefined && body.jadwalPembayaran === undefined) {
+    return NextResponse.json(
+      { error: "isi minimal salah satu: status atau jadwalPembayaran" },
+      { status: 400 }
+    );
+  }
+  if (body.status !== undefined && !VALID_STATUS.includes(body.status)) {
     return NextResponse.json(
       { error: `status harus salah satu dari: ${VALID_STATUS.join(", ")}` },
+      { status: 400 }
+    );
+  }
+  if (
+    body.jadwalPembayaran !== undefined &&
+    body.jadwalPembayaran !== null &&
+    !/^\d{4}-\d{2}-\d{2}$/.test(body.jadwalPembayaran)
+  ) {
+    return NextResponse.json(
+      { error: "jadwalPembayaran harus format YYYY-MM-DD, mis. 2026-09-08" },
       { status: 400 }
     );
   }
@@ -35,24 +54,27 @@ export async function PATCH(
   const [existing] = await db.select().from(payslip).where(eq(payslip.id, id));
   if (!existing) return NextResponse.json({ error: "not found" }, { status: 404 });
 
-  const from = existing.status as Status;
-  const to = body.status as Status;
-  if (from !== to && !ALLOWED_TRANSITIONS[from].includes(to)) {
-    return NextResponse.json(
-      { error: `Payslip status "${from}" nggak bisa langsung diubah ke "${to}"` },
-      { status: 409 }
-    );
+  const patch: Record<string, unknown> = {};
+
+  if (body.status !== undefined) {
+    const from = existing.status as Status;
+    const to = body.status as Status;
+    if (from !== to && !ALLOWED_TRANSITIONS[from].includes(to)) {
+      return NextResponse.json(
+        { error: `Payslip status "${from}" nggak bisa langsung diubah ke "${to}"` },
+        { status: 409 }
+      );
+    }
+    patch.status = to;
+    patch.finalizedAt = to === "belum_dibayar" ? new Date().toISOString() : existing.finalizedAt;
+    patch.paidAt = to === "lunas" ? new Date().toISOString() : to === "draft" ? null : existing.paidAt;
   }
 
-  const [row] = await db
-    .update(payslip)
-    .set({
-      status: to,
-      finalizedAt: to === "belum_dibayar" ? new Date().toISOString() : existing.finalizedAt,
-      paidAt: to === "lunas" ? new Date().toISOString() : to === "draft" ? null : existing.paidAt,
-    })
-    .where(eq(payslip.id, id))
-    .returning();
+  if (body.jadwalPembayaran !== undefined) {
+    patch.jadwalPembayaran = body.jadwalPembayaran;
+  }
+
+  const [row] = await db.update(payslip).set(patch).where(eq(payslip.id, id)).returning();
 
   return NextResponse.json(row);
 }

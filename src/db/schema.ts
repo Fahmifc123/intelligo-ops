@@ -5,7 +5,16 @@ export const trainer = sqliteTable("trainer", {
   id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   nama: text("nama").notNull(),
   email: text("email"),
+  // Legacy: field gabungan lama, gak dipakai di form manapun (dicek kosong
+  // di semua data produksi). Dipertahankan biar kolom lama gak ilang tanpa
+  // migrasi data, tapi UI baca/tulis lewat 3 kolom di bawah.
   bankAccount: text("bank_account"),
+  // Buat export payslip ke format n8n (lihat /api/payslip/[id]/export-n8n).
+  // Diisi manual, atau di-sync dari Google Form pendaftaran trainer -
+  // lihat syncTrainerBankInfo() di src/lib/trainerSync.ts.
+  bankName: text("bank_name"),
+  bankAccountNumber: text("bank_account_number"),
+  bankAccountName: text("bank_account_name"),
   createdAt: text("created_at").default(sql`(current_timestamp)`),
 });
 
@@ -125,6 +134,10 @@ export const payslip = sqliteTable("payslip", {
   createdAt: text("created_at").default(sql`(current_timestamp)`),
   finalizedAt: text("finalized_at"),
   paidAt: text("paid_at"),
+  // Tanggal estimasi transfer, "YYYY-MM-DD" - diisi manual admin, dipakai
+  // sebagai kolom "jadwal_pembayaran" pas export ke format n8n. Null
+  // sampai admin isi (lihat /api/payslip/[id]/export-n8n).
+  jadwalPembayaran: text("jadwal_pembayaran"),
 });
 
 // Baris penghubung payslip <-> sesi. `ratePerSesi` di-snapshot di sini

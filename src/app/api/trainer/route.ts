@@ -14,7 +14,13 @@ export async function POST(req: NextRequest) {
   }
   const [row] = await db
     .insert(trainer)
-    .values({ nama: body.nama, email: body.email ?? null, bankAccount: body.bankAccount ?? null })
+    .values({
+      nama: body.nama,
+      email: body.email ?? null,
+      bankName: body.bankName ?? null,
+      bankAccountNumber: body.bankAccountNumber ?? null,
+      bankAccountName: body.bankAccountName ?? null,
+    })
     .returning();
   return NextResponse.json(row, { status: 201 });
 }
