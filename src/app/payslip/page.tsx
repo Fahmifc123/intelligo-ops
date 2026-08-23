@@ -3,7 +3,15 @@ import { useEffect, useMemo, useState } from "react";
 import { initials, avatarClass, formatRupiah, BULAN, BULAN_LABEL, currentYear } from "@/lib/ui";
 
 type Trainer = { id: string; nama: string };
-type Kelas = { id: string; nama: string; trainerId: string };
+type Kelas = {
+  id: string;
+  nama: string;
+  trainerId: string;
+  // Semua trainer yang ngajar di kelas ini (bukan cuma trainer utama) -
+  // dari /api/kelas. Satu kelas bisa diajar beberapa trainer sekaligus,
+  // jadi wizard payslip harus nyari lewat sini, bukan cuma trainerId.
+  trainers?: { trainerId: string }[];
+};
 
 type SesiDetail = {
   sesiId: string;
@@ -293,7 +301,15 @@ export default function PayslipPage() {
     if (res.ok) load();
   }
 
-  const kelasTrainer = kelasList.filter((k) => k.trainerId === wTrainerId);
+  // Kelas trainer ini = dia trainer utama ATAU dia salah satu trainer
+  // tambahan (kelas multi-trainer). Sebelumnya cuma cek trainerId (trainer
+  // utama), jadi kelas yang Gabriel ajar sebagai trainer tambahan gak
+  // muncul di wizard - padahal sesi & fee dia beneran ada di kelas itu.
+  const kelasTrainer = kelasList.filter(
+    (k) =>
+      k.trainerId === wTrainerId ||
+      (k.trainers ?? []).some((t) => t.trainerId === wTrainerId)
+  );
   const wTrainerNama = trainers.find((t) => t.id === wTrainerId)?.nama ?? "";
   const wKelasNama = kelasList.find((k) => k.id === wKelasId)?.nama ?? "";
 
