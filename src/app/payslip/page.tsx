@@ -65,6 +65,8 @@ export default function PayslipPage() {
   const [trainers, setTrainers] = useState<Trainer[]>([]);
   const [kelasList, setKelasList] = useState<Kelas[]>([]);
   const [statusFilter, setStatusFilter] = useState("all");
+  // Filter periode buat analytics & list - "all" = semua periode.
+  const [periodeFilter, setPeriodeFilter] = useState("all");
   const [loading, setLoading] = useState(true);
 
   const [wizardOpen, setWizardOpen] = useState(false);
@@ -83,6 +85,10 @@ export default function PayslipPage() {
   const [wMsg, setWMsg] = useState<string | null>(null);
   // Kalau kepasang, wizard lagi mode edit payslip draft ini (bukan bikin baru).
   const [wEditingId, setWEditingId] = useState<string | null>(null);
+  // "Sekarang" dibekukan sekali per mount (lazy init, bukan Date.now() di
+  // render/useMemo) - itungan hari tunggakan gak perlu update tiap detik,
+  // dan React nolak impure call langsung di badan komponen/useMemo.
+  const [now] = useState(() => Date.now());
 
   async function load() {
     setLoading(true);
@@ -313,10 +319,80 @@ export default function PayslipPage() {
   const wTrainerNama = trainers.find((t) => t.id === wTrainerId)?.nama ?? "";
   const wKelasNama = kelasList.find((k) => k.id === wKelasId)?.nama ?? "";
 
-  const visiblePayslips = useMemo(
-    () => payslips.filter((p) => statusFilter === "all" || p.status === statusFilter),
-    [payslips, statusFilter]
+  // Periode yang beneran ada payslip-nya, terbaru dulu - buat dropdown filter.
+  const periodeOptions = useMemo(
+    () => Array.from(new Set(payslips.map((p) => p.periode))).sort().reverse(),
+    [payslips]
   );
+
+  // Filter periode nge-scope SEMUA di bawahnya (analytics + list), sesuai
+  // pola "filters scope everything below them" - biar angkanya selalu sinkron.
+  const periodePayslips = useMemo(
+    () => (periodeFilter === "all" ? payslips : payslips.filter((p) => p.periode === periodeFilter)),
+    [payslips, periodeFilter]
+  );
+
+  const visiblePayslips = useMemo(
+    () => periodePayslips.filter((p) => statusFilter === "all" || p.status === statusFilter),
+    [periodePayslips, statusFilter]
+  );
+
+  // --- Analytics, dihitung dari periodePayslips (udah discope filter periode) ---
+  const analytics = useMemo(() => {
+    const belumDibayar = periodePayslips.filter((p) => p.status === "belum_dibayar");
+    const totalBelumDibayar = belumDibayar.reduce((a, p) => a + p.totalFee, 0);
+
+    const lunas = periodePayslips.filter((p) => p.status === "lunas");
+    const totalLunas = lunas.reduce((a, p) => a + p.totalFee, 0);
+
+    // Tunggakan terlama = payslip belum_dibayar dengan finalizedAt paling
+    // lama - itu tanggal dia "dikunci", jadi patokan wajar buat "udah
+    // nunggak berapa lama", bukan createdAt (draft) atau tanggal hari ini.
+    const tunggakan = belumDibayar
+      .filter((p) => p.finalizedAt)
+      .map((p) => ({
+        ...p,
+        hariTertunggak: Math.floor((now - new Date(p.finalizedAt as string).getTime()) / 86_400_000),
+      }))
+      .sort((a, b) => b.hariTertunggak - a.hariTertunggak);
+    const tunggakanTerlama = tunggakan[0] ?? null;
+
+    // Breakdown per trainer: lunas vs belum dibayar, diurutin dari total
+    // terbesar biar yang paling perlu perhatian ada di atas.
+    const perTrainerMap = new Map<
+      string,
+      { trainerId: string; trainerNama: string; lunas: number; belumDibayar: number }
+    >();
+    for (const p of periodePayslips) {
+      if (p.status === "draft") continue; // draft belum final, gak masuk breakdown
+      const row = perTrainerMap.get(p.trainerId) ?? {
+        trainerId: p.trainerId,
+        trainerNama: p.trainerNama,
+        lunas: 0,
+        belumDibayar: 0,
+      };
+      if (p.status === "lunas") row.lunas += p.totalFee;
+      else row.belumDibayar += p.totalFee;
+      perTrainerMap.set(p.trainerId, row);
+    }
+    const perTrainer = Array.from(perTrainerMap.values()).sort(
+      (a, b) => b.lunas + b.belumDibayar - (a.lunas + a.belumDibayar)
+    );
+
+    // Tren per periode - SELALU dari payslips penuh (bukan periodePayslips),
+    // karena filter periode itu sendiri gak masuk akal dipakai buat nge-scope
+    // chart "tren ANTAR periode". 6 bulan terakhir yang ada datanya.
+    const perPeriodeMap = new Map<string, number>();
+    for (const p of payslips) {
+      if (p.status === "draft") continue;
+      perPeriodeMap.set(p.periode, (perPeriodeMap.get(p.periode) ?? 0) + p.totalFee);
+    }
+    const tren = Array.from(perPeriodeMap.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .slice(-6);
+
+    return { totalBelumDibayar, jumlahBelumDibayar: belumDibayar.length, totalLunas, tunggakanTerlama, perTrainer, tren };
+  }, [periodePayslips, payslips, now]);
 
   const inputClass =
     "w-full rounded-lg border border-outline-variant bg-surface px-3 py-2 font-inter text-body-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-primary";
@@ -343,6 +419,195 @@ export default function PayslipPage() {
           Buat Payslip
         </button>
       </div>
+
+      {/* Filter periode - nge-scope analytics + list di bawahnya (bukan chart
+          tren, itu sengaja selalu semua periode - lihat komentar analytics). */}
+      <div className="flex items-center gap-3">
+        <label htmlFor="periode-filter" className="font-geist text-label-sm text-text-muted">
+          Periode
+        </label>
+        <select
+          id="periode-filter"
+          value={periodeFilter}
+          onChange={(e) => setPeriodeFilter(e.target.value)}
+          className="rounded-lg border border-outline-variant bg-surface px-3 py-2 font-inter text-body-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-primary"
+        >
+          <option value="all">Semua periode</option>
+          {periodeOptions.map((p) => {
+            const [y, m] = p.split("-");
+            return (
+              <option key={p} value={p}>
+                {BULAN_LABEL[m] ?? m} {y}
+              </option>
+            );
+          })}
+        </select>
+      </div>
+
+      {/* Stat tiles */}
+      <div className="grid grid-cols-1 gap-stack-md sm:grid-cols-2 lg:grid-cols-4">
+        <div className="rounded-xl border border-outline-variant bg-surface-container-lowest p-5">
+          <p className="font-inter text-label-sm text-text-muted">Belum Dibayar</p>
+          <p className="mt-1 font-geist text-headline-md text-warning">
+            {formatRupiah(analytics.totalBelumDibayar)}
+          </p>
+          <p className="mt-1 font-inter text-label-sm text-text-muted">
+            {analytics.jumlahBelumDibayar} payslip
+          </p>
+        </div>
+        <div className="rounded-xl border border-outline-variant bg-surface-container-lowest p-5">
+          <p className="font-inter text-label-sm text-text-muted">Lunas</p>
+          <p className="mt-1 font-geist text-headline-md text-success">
+            {formatRupiah(analytics.totalLunas)}
+          </p>
+          <p className="mt-1 font-inter text-label-sm text-text-muted">
+            {periodeFilter === "all" ? "sepanjang waktu" : "periode ini"}
+          </p>
+        </div>
+        <div className="rounded-xl border border-outline-variant bg-surface-container-lowest p-5">
+          <p className="font-inter text-label-sm text-text-muted">Payslip Aktif</p>
+          <p className="mt-1 font-geist text-headline-md text-primary">
+            {periodePayslips.filter((p) => p.status !== "draft").length}
+          </p>
+          <p className="mt-1 font-inter text-label-sm text-text-muted">belum dibayar + lunas</p>
+        </div>
+        <div className="rounded-xl border border-outline-variant bg-surface-container-lowest p-5">
+          <p className="font-inter text-label-sm text-text-muted">Tunggakan Terlama</p>
+          {analytics.tunggakanTerlama ? (
+            <>
+              <p className="mt-1 truncate font-geist text-headline-sm text-error">
+                {analytics.tunggakanTerlama.trainerNama}
+              </p>
+              <p className="mt-1 font-inter text-label-sm text-text-muted">
+                {analytics.tunggakanTerlama.hariTertunggak} hari &middot;{" "}
+                {formatRupiah(analytics.tunggakanTerlama.totalFee)}
+              </p>
+            </>
+          ) : (
+            <p className="mt-1 font-geist text-headline-sm text-text-muted">-</p>
+          )}
+        </div>
+      </div>
+
+      {/* Breakdown per trainer & tren per periode */}
+      {(analytics.perTrainer.length > 0 || analytics.tren.length > 0) && (
+        <div className="grid grid-cols-1 gap-stack-md lg:grid-cols-2">
+          {analytics.perTrainer.length > 0 && (
+            <div className="rounded-xl border border-outline-variant bg-surface-container-lowest p-5">
+              <h2 className="mb-4 font-geist text-label-lg text-primary">Per Trainer</h2>
+              <div className="flex flex-col gap-3">
+                {analytics.perTrainer.map((row) => {
+                  const total = row.lunas + row.belumDibayar;
+                  const maxTotal = Math.max(
+                    ...analytics.perTrainer.map((r) => r.lunas + r.belumDibayar)
+                  );
+                  const pctLunas = total > 0 ? (row.lunas / total) * 100 : 0;
+                  const pctBelum = total > 0 ? (row.belumDibayar / total) * 100 : 0;
+                  const widthPct = maxTotal > 0 ? (total / maxTotal) * 100 : 0;
+                  return (
+                    <div key={row.trainerId} className="flex flex-col gap-1">
+                      <div className="flex items-baseline justify-between gap-2">
+                        <span className="truncate font-inter text-body-sm text-on-surface-variant">
+                          {row.trainerNama}
+                        </span>
+                        <span className="whitespace-nowrap font-geist text-label-sm text-primary tabular-nums">
+                          {formatRupiah(total)}
+                        </span>
+                      </div>
+                      <div
+                        className="h-2.5 overflow-hidden rounded-full bg-surface-container-high"
+                        role="img"
+                        aria-label={`${row.trainerNama}: ${formatRupiah(row.lunas)} lunas, ${formatRupiah(row.belumDibayar)} belum dibayar`}
+                      >
+                        <div className="flex h-full" style={{ width: `${widthPct}%` }}>
+                          {row.lunas > 0 && (
+                            <div
+                              className="h-full bg-success"
+                              style={{ width: `${pctLunas}%` }}
+                              title={`Lunas: ${formatRupiah(row.lunas)}`}
+                            />
+                          )}
+                          {row.belumDibayar > 0 && (
+                            <div
+                              className="h-full bg-warning"
+                              style={{ width: `${pctBelum}%` }}
+                              title={`Belum dibayar: ${formatRupiah(row.belumDibayar)}`}
+                            />
+                          )}
+                        </div>
+                      </div>
+                      {/* Angka eksplisit, bukan cuma warna+tooltip - success/warning
+                          di atas surface ini kontrasnya di bawah 3:1 (WARN dari
+                          validator), jadi nilainya wajib kebaca tanpa hover. */}
+                      <div className="flex items-center gap-3 font-inter text-label-sm text-text-muted">
+                        {row.lunas > 0 && <span>Lunas {formatRupiah(row.lunas)}</span>}
+                        {row.belumDibayar > 0 && (
+                          <span>Belum dibayar {formatRupiah(row.belumDibayar)}</span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="mt-4 flex items-center gap-4 border-t border-outline-variant/60 pt-3">
+                <span className="flex items-center gap-1.5 font-inter text-label-sm text-text-muted">
+                  <span className="h-2.5 w-2.5 rounded-full bg-success" /> Lunas
+                </span>
+                <span className="flex items-center gap-1.5 font-inter text-label-sm text-text-muted">
+                  <span className="h-2.5 w-2.5 rounded-full bg-warning" /> Belum dibayar
+                </span>
+              </div>
+            </div>
+          )}
+
+          {analytics.tren.length > 0 && (
+            <div className="rounded-xl border border-outline-variant bg-surface-container-lowest p-5">
+              <h2 className="mb-1 font-geist text-label-lg text-primary">Tren Fee per Bulan</h2>
+              <p className="mb-4 font-inter text-label-sm text-text-muted">
+                Payslip belum dibayar + lunas, 6 periode terakhir
+              </p>
+              <div className="flex items-end gap-3" style={{ height: 160 }}>
+                {(() => {
+                  const maxVal = Math.max(...analytics.tren.map(([, v]) => v), 1);
+                  return analytics.tren.map(([periode, val]) => {
+                    const [y, m] = periode.split("-");
+                    const isActive = periodeFilter === periode;
+                    const hPct = (val / maxVal) * 100;
+                    return (
+                      <button
+                        key={periode}
+                        type="button"
+                        onClick={() => setPeriodeFilter(isActive ? "all" : periode)}
+                        className="group flex flex-1 flex-col items-center gap-2"
+                        title={`${BULAN_LABEL[m] ?? m} ${y}: ${formatRupiah(val)}`}
+                      >
+                        <span className="font-inter text-label-sm tabular-nums text-text-muted opacity-0 transition-opacity group-hover:opacity-100">
+                          {formatRupiah(val)}
+                        </span>
+                        <div className="flex h-full w-full items-end">
+                          <div
+                            className={`w-full rounded-t transition-colors ${
+                              isActive
+                                ? "bg-primary"
+                                : "bg-primary-fixed-dim group-hover:bg-primary"
+                            }`}
+                            style={{ height: `${Math.max(hPct, 3)}%` }}
+                          />
+                        </div>
+                        <span
+                          className={`font-geist text-label-sm ${isActive ? "text-primary" : "text-text-muted"}`}
+                        >
+                          {(BULAN_LABEL[m] ?? m).slice(0, 3)}
+                        </span>
+                      </button>
+                    );
+                  });
+                })()}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Filter status */}
       <div className="flex flex-wrap gap-2">
