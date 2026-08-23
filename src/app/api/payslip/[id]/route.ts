@@ -95,6 +95,7 @@ export async function PUT(
     .select({
       id: sesi.id,
       status: sesi.status,
+      tanpaFee: sesi.tanpaFee,
     })
     .from(sesi)
     .where(inArray(sesi.id, sesiIds));
@@ -109,6 +110,15 @@ export async function PUT(
   if (belumSelesai.length > 0) {
     return NextResponse.json(
       { error: `${belumSelesai.length} sesi yang dipilih belum berstatus selesai` },
+      { status: 400 }
+    );
+  }
+  const tanpaFeeCount = sesiRows.filter((s) => s.tanpaFee).length;
+  if (tanpaFeeCount > 0) {
+    return NextResponse.json(
+      {
+        error: `${tanpaFeeCount} sesi yang dipilih adalah materi Video Course - gak ada fee-nya, gak bisa dimasukin payslip.`,
+      },
       { status: 400 }
     );
   }

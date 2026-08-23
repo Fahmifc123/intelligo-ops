@@ -37,6 +37,9 @@ type Kelas = {
   totalFeeKelas: number;
   feeLunasKelas: number;
   status: "persiapan" | "aktif" | "selesai" | "lunas";
+  // Jumlah sesi "Video Course" dkk - materi rekaman, bukan sesi live,
+  // gak dihitung ke fee/jumlah sesi trainer manapun.
+  sesiTanpaFee: number;
 };
 
 type Sesi = { id: string; kelasId: string; status: string };
@@ -1175,6 +1178,11 @@ export default function KelasPage() {
                     <p className="font-inter text-label-sm text-secondary">
                       Belum dibayar: {rupiah(k.totalFeeKelas - k.feeLunasKelas)}
                       {k.feeLunasKelas > 0 && ` dari ${rupiah(k.totalFeeKelas)}`}
+                    </p>
+                  )}
+                  {k.sesiTanpaFee > 0 && (
+                    <p className="font-inter text-label-sm text-text-muted">
+                      +{k.sesiTanpaFee} sesi video course (no fee)
                     </p>
                   )}
                 </div>

@@ -52,6 +52,14 @@ export const sesi = sqliteTable("sesi", {
   tanggal: text("tanggal"),
   materi: text("materi"),
   status: text("status").notNull().default("belum"), // belum | selesai | batal
+  // Sesi ini SENGAJA gak punya trainer & gak dihitung fee siapapun - beda
+  // dari trainerId null (yang berarti "ikut trainer utama kelas"). Dipicu
+  // sync Navigator pas kolom Trainer isinya "Video Course" (materi
+  // rekaman, bukan sesi live). Sesi tetap ditandai selesai (materinya udah
+  // tersedia), tapi dikeluarkan total dari perhitungan fee - termasuk gak
+  // ikut jadi pembagi skema paket, biar trainer yang beneran ngajar live
+  // gak dirugikan. Lihat trainerEfektif() & petaRateSesi().
+  tanpaFee: integer("tanpa_fee", { mode: "boolean" }).notNull().default(false),
   linkRecord: text("link_record"),
   source: text("source").notNull().default("manual"), // manual | navigator_sync
   createdAt: text("created_at").default(sql`(current_timestamp)`),

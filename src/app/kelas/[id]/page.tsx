@@ -36,6 +36,7 @@ type KelasRingkas = {
   totalFeeKelas: number;
   feeLunasKelas: number;
   trainers: (TrainerRingkas & { jumlahSesi: number; sesiSelesai: number; totalFee: number; feeLunas: number })[];
+  sesiTanpaFee: number;
 };
 
 type Sesi = {
@@ -46,6 +47,7 @@ type Sesi = {
   status: string;
   linkRecord: string | null;
   trainerId: string | null;
+  tanpaFee: boolean;
 };
 
 export default function KelasDetailPage() {
@@ -332,6 +334,12 @@ export default function KelasDetailPage() {
               {ringkas.feeLunasKelas > 0 && ` dari ${rupiah(ringkas.totalFeeKelas)}`}
             </p>
           )}
+          {ringkas.sesiTanpaFee > 0 && (
+            <p className="mt-1 font-inter text-label-sm text-text-muted">
+              +{ringkas.sesiTanpaFee} sesi video course (materi rekaman, gak dihitung fee
+              siapapun)
+            </p>
+          )}
         </div>
       )}
 
@@ -375,7 +383,16 @@ export default function KelasDetailPage() {
                       <td className="py-2 pr-3 text-text-muted">{s.tanggal ?? "-"}</td>
                       <td className="py-2 pr-3">{s.materi ?? "-"}</td>
                       <td className="py-2 pr-3 text-text-muted">
-                        {namaTrainerById[s.trainerId ?? ""] ?? kelas.trainerNama ?? "-"}
+                        {s.tanpaFee ? (
+                          <span className="inline-flex items-center gap-1">
+                            <span className="material-symbols-outlined text-[14px]">
+                              smart_display
+                            </span>
+                            Video Course
+                          </span>
+                        ) : (
+                          (namaTrainerById[s.trainerId ?? ""] ?? kelas.trainerNama ?? "-")
+                        )}
                       </td>
                       <td className="py-2 pr-3">
                         <span

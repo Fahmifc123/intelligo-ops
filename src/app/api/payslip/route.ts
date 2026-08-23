@@ -89,6 +89,7 @@ export async function POST(req: NextRequest) {
       id: sesi.id,
       status: sesi.status,
       kelasId: sesi.kelasId,
+      tanpaFee: sesi.tanpaFee,
     })
     .from(sesi)
     .where(inArray(sesi.id, sesiIds));
@@ -105,6 +106,17 @@ export async function POST(req: NextRequest) {
   if (belumSelesai.length > 0) {
     return NextResponse.json(
       { error: `${belumSelesai.length} sesi yang dipilih belum berstatus selesai` },
+      { status: 400 }
+    );
+  }
+  // Sesi "Video Course" dkk gak boleh masuk payslip siapapun - rate-nya
+  // emang 0, nagihin itu ke trainer gak masuk akal.
+  const tanpaFeeCount = sesiRows.filter((s) => s.tanpaFee).length;
+  if (tanpaFeeCount > 0) {
+    return NextResponse.json(
+      {
+        error: `${tanpaFeeCount} sesi yang dipilih adalah materi Video Course - gak ada fee-nya, gak bisa dimasukin payslip.`,
+      },
       { status: 400 }
     );
   }

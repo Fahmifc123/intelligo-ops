@@ -37,18 +37,25 @@ export async function hitungRatePerSesi(): Promise<Record<string, number>> {
         pertemuanKe: sesi.pertemuanKe,
         sesiTrainerId: sesi.trainerId,
         kelasTrainerId: kelas.trainerId,
+        tanpaFee: sesi.tanpaFee,
       })
       .from(sesi)
       .leftJoin(kelas, eq(sesi.kelasId, kelas.id)),
     db.select().from(feeRule),
   ]);
 
-  const semuaSesi: BarisSesi[] = rows.map((r) => ({
-    id: r.id,
-    kelasId: r.kelasId,
-    pertemuanKe: r.pertemuanKe,
-    trainerId: trainerEfektif(r.sesiTrainerId, r.kelasTrainerId),
-  }));
+  // Sesi tanpaFee (mis. materi "Video Course") dibuang SEBELUM masuk
+  // grouping petaRateSesi - dia gak boleh ikut jadi pembagi skema paket.
+  // Rate-nya otomatis 0 karena gak ada di rateMap hasil akhir sama sekali
+  // (pemanggil pakai `rateMap[sesiId] ?? 0`).
+  const semuaSesi: BarisSesi[] = rows
+    .filter((r) => !r.tanpaFee)
+    .map((r) => ({
+      id: r.id,
+      kelasId: r.kelasId,
+      pertemuanKe: r.pertemuanKe,
+      trainerId: trainerEfektif(r.sesiTrainerId, r.kelasTrainerId),
+    }));
 
   // Baris fee di-index pakai kunci (kelas, trainer). Baris lama yang
   // trainerId-nya null tetap masuk sebagai fallback se-kelas.

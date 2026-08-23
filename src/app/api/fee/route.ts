@@ -31,6 +31,7 @@ export async function GET(req: NextRequest) {
       // utama kelas kalau kelasnya diajar gantian.
       sesiTrainerId: sesi.trainerId,
       kelasTrainerId: kelas.trainerId,
+      tanpaFee: sesi.tanpaFee,
       payslipStatus: payslip.status,
     })
     .from(sesi)
@@ -38,6 +39,11 @@ export async function GET(req: NextRequest) {
     .leftJoin(payslipItem, eq(payslipItem.sesiId, sesi.id))
     .leftJoin(payslip, eq(payslip.id, payslipItem.payslipId))
     .where(eq(sesi.status, "selesai"));
+
+  // Sesi "Video Course" dkk gak dihitung fee siapapun - dibuang sebelum
+  // masuk rekap, bukan cuma diandelin rate-nya 0 (biar jumlahSesi juga
+  // gak ikut kehitung).
+  rows = rows.filter((r) => !r.tanpaFee);
 
   // Nama trainer diambil terpisah - join langsung bakal ngikut trainer
   // kelas, padahal yang kita mau trainer per sesi.

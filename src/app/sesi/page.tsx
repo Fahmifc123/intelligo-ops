@@ -15,6 +15,8 @@ type Sesi = {
   // null = ngikut trainer utama kelas. Diisi kalau kelasnya diajar gantian.
   trainerId: string | null;
   kelasTrainerId: string | null;
+  // Sesi materi rekaman ("Video Course" dkk) - gak ada trainer, gak ada fee.
+  tanpaFee: boolean;
 };
 
 export default function SesiPage() {
@@ -79,6 +81,7 @@ export default function SesiPage() {
 
   /** Nama trainer yang ngajar sesi ini (sesi.trainerId ?? trainer kelas). */
   function namaTrainerSesi(s: Sesi): string {
+    if (s.tanpaFee) return "Video Course";
     const tid = s.trainerId ?? s.kelasTrainerId;
     return trainerList.find((t) => t.id === tid)?.nama ?? "-";
   }
@@ -422,25 +425,36 @@ export default function SesiPage() {
                       <span className="material-symbols-outlined text-[16px]">schedule</span>
                       {s.tanggal ?? "Tanggal belum diisi"}
                     </span>
-                    {/* Trainer bisa diganti langsung di sini - kelas yang
-                        diajar gantian gak perlu buka form edit. */}
-                    <span className="flex items-center gap-1.5">
-                      <span className="material-symbols-outlined text-[16px]">person</span>
-                      <select
-                        value={s.trainerId ?? ""}
-                        onChange={(e) => ubahTrainer(s, e.target.value)}
-                        aria-label={`Trainer sesi ${s.pertemuanKe}`}
-                        title={`Trainer: ${namaTrainerSesi(s)}`}
-                        className="cursor-pointer rounded border border-transparent bg-transparent py-0.5 pr-1 font-inter text-label-sm text-text-muted transition-colors hover:border-outline-variant hover:text-primary focus:border-outline-variant focus:outline-none"
-                      >
-                        <option value="">{namaTrainerSesi(s)} (trainer kelas)</option>
-                        {trainerList.map((t) => (
-                          <option key={t.id} value={t.id}>
-                            {t.nama}
-                          </option>
-                        ))}
-                      </select>
-                    </span>
+                    {/* Sesi Video Course gak punya trainer sama sekali -
+                        dropdown ganti trainer gak relevan, cukup label. */}
+                    {s.tanpaFee ? (
+                      <span className="flex items-center gap-1.5 text-text-muted">
+                        <span className="material-symbols-outlined text-[16px]">
+                          smart_display
+                        </span>
+                        Video Course &middot; no fee
+                      </span>
+                    ) : (
+                      // Trainer bisa diganti langsung di sini - kelas yang
+                      // diajar gantian gak perlu buka form edit.
+                      <span className="flex items-center gap-1.5">
+                        <span className="material-symbols-outlined text-[16px]">person</span>
+                        <select
+                          value={s.trainerId ?? ""}
+                          onChange={(e) => ubahTrainer(s, e.target.value)}
+                          aria-label={`Trainer sesi ${s.pertemuanKe}`}
+                          title={`Trainer: ${namaTrainerSesi(s)}`}
+                          className="cursor-pointer rounded border border-transparent bg-transparent py-0.5 pr-1 font-inter text-label-sm text-text-muted transition-colors hover:border-outline-variant hover:text-primary focus:border-outline-variant focus:outline-none"
+                        >
+                          <option value="">{namaTrainerSesi(s)} (trainer kelas)</option>
+                          {trainerList.map((t) => (
+                            <option key={t.id} value={t.id}>
+                              {t.nama}
+                            </option>
+                          ))}
+                        </select>
+                      </span>
+                    )}
                     {s.linkRecord && (
                       <a
                         href={s.linkRecord}

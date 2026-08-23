@@ -32,6 +32,7 @@ export async function GET(req: NextRequest) {
       materi: sesi.materi,
       sesiTrainerId: sesi.trainerId,
       kelasTrainerId: kelas.trainerId,
+      tanpaFee: sesi.tanpaFee,
       payslipId: payslipItem.payslipId,
       payslipPeriode: payslip.periode,
       payslipStatus: payslip.status,
@@ -48,6 +49,7 @@ export async function GET(req: NextRequest) {
     .filter(
       (r) =>
         r.status === "selesai" &&
+        !r.tanpaFee &&
         trainerEfektif(r.sesiTrainerId, r.kelasTrainerId) === trainerId
     )
     .map((r) => ({

@@ -1,0 +1,1 @@
+ALTER TABLE `sesi` ADD `tanpa_fee` integer DEFAULT false NOT NULL;

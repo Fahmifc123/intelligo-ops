@@ -28,6 +28,22 @@ const HEADER_ALIASES: Record<string, string[]> = {
 
 const DEFAULT_TAB_NAME = "Sheet1";
 
+/**
+ * Nilai khusus di kolom Trainer yang BUKAN nama trainer - penanda sesi
+ * materi rekaman/pre-recorded, bukan sesi live yang diajar seseorang.
+ * Dicocokin case-insensitive & di-trim, biar "video course", "Video Course "
+ * dst semua ketangkep.
+ *
+ * Sesi kayak gini ditandai selesai (materinya emang udah tersedia), tapi
+ * dikeluarkan total dari perhitungan fee - lihat komentar di
+ * schema.ts (sesi.tanpaFee) buat alasan lengkapnya.
+ */
+const TRAINER_TANPA_FEE = new Set(["video course"]);
+
+function isTrainerTanpaFee(namaSheet: string): boolean {
+  return TRAINER_TANPA_FEE.has(namaSheet.trim().toLowerCase());
+}
+
 export function extractSheetId(input: string): string {
   const trimmed = input.trim();
   const match = trimmed.match(/\/d\/([a-zA-Z0-9-_]+)/);
@@ -340,6 +356,7 @@ export async function syncKelasFromNavigator(kelasId: string): Promise<SyncResul
 
     let status: "selesai" | "belum";
     let sesiTrainerId: string | null;
+    let tanpaFee = false;
     let trainerNamaSheet = "";
     let trainerSheet: (typeof semuaTrainer)[number] | undefined;
 
@@ -353,24 +370,33 @@ export async function syncKelasFromNavigator(kelasId: string): Promise<SyncResul
     } else {
       trainerNamaSheet = (row[cols.trainer] || "").trim();
 
-      // Status "selesai" = kolom Trainer di baris ini keisi nama trainer yang
-      // KEDAFTAR (siapapun, gak harus trainer utama kelas). Ini penanda
-      // "trainer ini udah ngajar pertemuan ini", BUKAN dari tanggal terisi -
-      // tanggal cuma info jadwal, bisa keisi buat sesi yang belum kejadian.
-      trainerSheet = trainerNamaSheet
-        ? trainerByNama.get(trainerNamaSheet.toLowerCase())
-        : undefined;
-      status = trainerSheet ? "selesai" : "belum";
+      if (isTrainerTanpaFee(trainerNamaSheet)) {
+        // "Video Course" dkk - materi rekaman, bukan sesi live. Selesai
+        // (materinya emang udah tersedia), tapi gak ada trainer & gak
+        // dihitung fee siapapun.
+        status = "selesai";
+        sesiTrainerId = null;
+        tanpaFee = true;
+      } else {
+        // Status "selesai" = kolom Trainer di baris ini keisi nama trainer yang
+        // KEDAFTAR (siapapun, gak harus trainer utama kelas). Ini penanda
+        // "trainer ini udah ngajar pertemuan ini", BUKAN dari tanggal terisi -
+        // tanggal cuma info jadwal, bisa keisi buat sesi yang belum kejadian.
+        trainerSheet = trainerNamaSheet
+          ? trainerByNama.get(trainerNamaSheet.toLowerCase())
+          : undefined;
+        status = trainerSheet ? "selesai" : "belum";
 
-      // Sesi disimpan atas nama trainer yang ada di sheet. Kalau kosong,
-      // dibiarin null -> nanti kebaca sebagai trainer utama kelas.
-      sesiTrainerId = trainerSheet?.id ?? null;
+        // Sesi disimpan atas nama trainer yang ada di sheet. Kalau kosong,
+        // dibiarin null -> nanti kebaca sebagai trainer utama kelas.
+        sesiTrainerId = trainerSheet?.id ?? null;
+      }
     }
 
     // Nama keisi tapi gak kedaftar = kemungkinan salah ketik, atau trainer
     // baru yang belum diinput. Sesi-nya tetap dibikin (status "belum"),
     // tapi dilaporin biar admin bisa nindaklanjutin.
-    if (!trainerManual && trainerNamaSheet && !trainerSheet) {
+    if (!trainerManual && !tanpaFee && trainerNamaSheet && !trainerSheet) {
       result.errors.push(
         `Pertemuan ${pertemuanRaw}: nama trainer di sheet ("${trainerNamaSheet}") belum terdaftar. Tambahin dulu di halaman Trainer, atau betulin ejaannya.`
       );
@@ -394,6 +420,7 @@ export async function syncKelasFromNavigator(kelasId: string): Promise<SyncResul
           linkRecord: record,
           status,
           trainerId: sesiTrainerId,
+          tanpaFee,
           source: "navigator_sync",
         })
         .where(eq(sesi.id, existing[0].id));
@@ -407,6 +434,7 @@ export async function syncKelasFromNavigator(kelasId: string): Promise<SyncResul
         linkRecord: record,
         status,
         trainerId: sesiTrainerId,
+        tanpaFee,
         source: "navigator_sync",
       });
       result.inserted++;

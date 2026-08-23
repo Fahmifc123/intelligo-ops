@@ -18,6 +18,7 @@ export async function GET(req: NextRequest) {
       // Trainer sesi ini; null = ngikut trainer utama kelas.
       trainerId: sesi.trainerId,
       kelasTrainerId: kelas.trainerId,
+      tanpaFee: sesi.tanpaFee,
     })
     .from(sesi)
     .leftJoin(kelas, eq(sesi.kelasId, kelas.id));

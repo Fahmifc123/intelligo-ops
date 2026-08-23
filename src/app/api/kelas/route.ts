@@ -35,6 +35,7 @@ export async function GET() {
         kelasId: sesi.kelasId,
         status: sesi.status,
         trainerId: sesi.trainerId,
+        tanpaFee: sesi.tanpaFee,
         // Status payslip yang nampung sesi ini (null = belum masuk payslip
         // manapun). Dipakai buat nentuin fee kelas udah lunas atau belum.
         payslipStatus: payslip.status,
@@ -63,10 +64,20 @@ export async function GET() {
   };
 
   const perKelas: Record<string, Record<string, Ringkas>> = {};
+  // Jumlah sesi "Video Course" dkk per kelas - dikeluarkan total dari
+  // analytics per-trainer (gak dihitung sebagai sesi siapapun), tapi
+  // tetap dicatat di sini biar keliatan di UI, bukan hilang gitu aja.
+  const sesiTanpaFeePerKelas: Record<string, number> = {};
 
   for (const s of semuaSesi) {
     const k = kelasById[s.kelasId];
     if (!k) continue;
+
+    if (s.tanpaFee) {
+      sesiTanpaFeePerKelas[s.kelasId] = (sesiTanpaFeePerKelas[s.kelasId] ?? 0) + 1;
+      continue;
+    }
+
     const tid = trainerEfektif(s.trainerId, k.trainerId);
     if (!tid) continue;
 
@@ -156,6 +167,9 @@ export async function GET() {
       totalFeeKelas,
       feeLunasKelas,
       status,
+      // Sesi "Video Course" dkk - gak masuk hitungan sesi/fee trainer
+      // manapun di atas, ditampilin terpisah biar keliatan di UI.
+      sesiTanpaFee: sesiTanpaFeePerKelas[k.id] ?? 0,
     };
   });
 
