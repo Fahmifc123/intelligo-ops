@@ -26,6 +26,13 @@ export const kelas = sqliteTable("kelas", {
   // ID Google Sheet Navigator kelas ini (dari URL sheet: /d/{INI_ID}/edit).
   // Kalau diisi, sesi kelas ini di-sync otomatis dari sheet, bukan input manual.
   navigatorSheetId: text("navigator_sheet_id"),
+  // Nama tab (bukan gid) yang dibaca sync, mis. "Jadwal, silabus & Rekaman".
+  // Null = coba "Sheet1" dulu (DEFAULT_TAB_NAME di navigatorSync.ts) -
+  // banyak sheet lama emang cuma punya satu tab dengan nama default itu.
+  // Wajib diisi manual buat sheet yang tab datanya dinamain lain/ada
+  // beberapa tab (Master, Jadwal, Mentoring, dst) - gid di URL sheet gak
+  // bisa dipetakan ke nama tab tanpa API tambahan, jadi ini input manual.
+  navigatorTabName: text("navigator_tab_name"),
   navigatorLastSyncedAt: text("navigator_last_synced_at"),
   // Mapping kolom manual, JSON { "pertemuan": 1, "trainer": 11, ... } -
   // nilainya index kolom di header row sheet. Cuma diisi kalau nama kolom

@@ -90,6 +90,7 @@ export async function GET(
       tanggalMulai: kelas.tanggalMulai,
       polaPembayaran: kelas.polaPembayaran,
       navigatorSheetId: kelas.navigatorSheetId,
+      navigatorTabName: kelas.navigatorTabName,
       navigatorColumnMap: kelas.navigatorColumnMap,
       navigatorLastSyncedAt: kelas.navigatorLastSyncedAt,
     })
@@ -198,6 +199,9 @@ export async function PATCH(
       navigatorSheetId: body.navigatorSheetId
         ? extractSheetId(body.navigatorSheetId)
         : null,
+    }),
+    ...(body.navigatorTabName !== undefined && {
+      navigatorTabName: body.navigatorTabName?.trim() || null,
     }),
     ...(body.navigatorColumnMap !== undefined && {
       navigatorColumnMap: body.navigatorColumnMap

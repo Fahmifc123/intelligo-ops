@@ -19,6 +19,7 @@ export async function GET() {
       trainerNama: trainer.nama,
       polaPembayaran: kelas.polaPembayaran,
       navigatorSheetId: kelas.navigatorSheetId,
+      navigatorTabName: kelas.navigatorTabName,
       navigatorLastSyncedAt: kelas.navigatorLastSyncedAt,
     })
     .from(kelas)
@@ -188,6 +189,9 @@ export async function POST(req: NextRequest) {
       // "akhir" (dibayar sekali pas kelas kelar) kalau gak dipilih.
       polaPembayaran: body.polaPembayaran ?? "akhir",
       navigatorSheetId: body.navigatorSheetId ? extractSheetId(body.navigatorSheetId) : null,
+      // Nama tab yang dibaca sync - null = coba "Sheet1". Wajib diisi
+      // manual buat sheet dengan banyak tab (lihat navigatorSync.ts).
+      navigatorTabName: body.navigatorTabName?.trim() || null,
       // Mapping kolom manual disimpan sebagai JSON string; null = pakai auto-detect.
       navigatorColumnMap: body.navigatorColumnMap
         ? JSON.stringify(body.navigatorColumnMap)

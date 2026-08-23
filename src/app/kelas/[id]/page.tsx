@@ -23,6 +23,7 @@ type KelasDetail = {
   tanggalMulai: string | null;
   polaPembayaran: "akhir" | "bulanan";
   navigatorSheetId: string | null;
+  navigatorTabName: string | null;
   navigatorLastSyncedAt: string | null;
   trainers: TrainerRingkas[];
 };
@@ -245,6 +246,12 @@ export default function KelasDetailPage() {
                 {copied ? "Disalin" : "Salin link"}
               </button>
             </div>
+
+            <p className="font-inter text-label-sm text-text-muted">
+              Tab yang dibaca: <span className="font-medium text-on-surface-variant">
+                {kelas.navigatorTabName || "Sheet1 (default)"}
+              </span>
+            </p>
 
             <div className="flex flex-wrap items-center justify-between gap-3">
               <p className="font-inter text-label-sm text-text-muted">

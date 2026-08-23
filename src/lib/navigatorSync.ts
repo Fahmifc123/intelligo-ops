@@ -45,6 +45,13 @@ async function fetchSheetRows(sheetId: string, tabName = DEFAULT_TAB_NAME): Prom
   const url = csvExportUrl(sheetId, tabName);
   const res = await fetch(url);
 
+  // PENTING: endpoint gviz Google Sheets gak pernah balikin error status
+  // buat nama tab yang gak ketemu - dia diem-diem jatuh ke tab PALING
+  // KIRI di sheet itu, tetep status 200. Gak ada cara verifikasi nama tab
+  // itu bener tanpa kredensial Google (di luar prinsip project ini: gak
+  // butuh service account apapun). Makanya validasi "tab bener" dilakuin
+  // di sisi lain - lihat previewNavigatorSheet(), yang bandingin header
+  // ketemu vs yang diharapin & warn kalau kelihatan kayak salah tab.
   if (!res.ok) {
     throw new Error(
       `Gagal ambil sheet (status ${res.status}). Pastikan link sheet-nya bener dan sheet udah di-share "Anyone with the link can view".`
@@ -211,12 +218,17 @@ export const MAPPABLE_FIELDS = [
  */
 export async function previewNavigatorSheet(
   sheetIdOrUrl: string,
-  override?: Record<string, number> | null
+  override?: Record<string, number> | null,
+  tabName?: string | null
 ) {
   const sheetId = extractSheetId(sheetIdOrUrl);
-  const rows = await fetchSheetRows(sheetId);
+  const rows = await fetchSheetRows(sheetId, tabName || undefined);
   if (rows.length === 0) {
-    throw new Error("Sheet kosong atau gak kebaca.");
+    throw new Error(
+      tabName
+        ? `Tab "${tabName}" kosong. (Kalau nama tab-nya salah ketik, Google Sheets diem-diem nampilin tab lain, bukan error - cek headerRow di bawah buat mastiin ini tab yang bener.)`
+        : "Sheet kosong atau gak kebaca."
+    );
   }
   const headerRow = rows[0];
 
@@ -233,13 +245,21 @@ export async function previewNavigatorSheet(
       error: null,
     };
   } catch (e) {
+    let msg = e instanceof Error ? e.message : String(e);
+    // Kolom "Pertemuan" gak ketemu DAN nama tab diisi manual - kemungkinan
+    // besar nama tabnya salah ketik dan Google diem-diem nampilin tab
+    // lain (lihat catatan panjang di fetchSheetRows). Ditambahin di sini,
+    // bukan di detectColumns(), karena cuma di sini yang tau tabName-nya.
+    if (tabName) {
+      msg += ` Kolom-kolom di atas juga gak kelihatan kayak jadwal sesi - cek lagi apakah nama tab "${tabName}" udah persis sama kayak di Google Sheets (Google diem-diem nampilin tab lain kalau nama tab gak ketemu, bukan error).`;
+    }
     return {
       sheetId,
       headerRow,
       detected: null,
       needsManualMapping: true,
       needsTrainerManual: false,
-      error: e instanceof Error ? e.message : String(e),
+      error: msg,
     };
   }
 }
@@ -273,7 +293,7 @@ export async function syncKelasFromNavigator(kelasId: string): Promise<SyncResul
     semuaTrainer.map((x) => [x.nama.trim().toLowerCase(), x])
   );
 
-  const allRows = await fetchSheetRows(k.navigatorSheetId);
+  const allRows = await fetchSheetRows(k.navigatorSheetId, k.navigatorTabName || undefined);
   if (allRows.length === 0) {
     throw new Error(`Sheet Navigator kelas ${k.nama} kosong`);
   }

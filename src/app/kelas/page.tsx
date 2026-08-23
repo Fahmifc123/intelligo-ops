@@ -31,6 +31,7 @@ type Kelas = {
   // (diakumulasi tiap bulan). Gak dipakai buat ngitung fee apapun.
   polaPembayaran: "akhir" | "bulanan";
   navigatorSheetId: string | null;
+  navigatorTabName: string | null;
   navigatorLastSyncedAt: string | null;
   trainers: TrainerRingkas[];
   totalFeeKelas: number;
@@ -75,6 +76,10 @@ export default function KelasPage() {
     Record<string, { skema: "flat" | "paket"; rate: string; total: string; target: string }>
   >({});
   const [sheetLink, setSheetLink] = useState("");
+  // Nama tab di sheet yang dibaca sync. Kosong = coba "Sheet1" - banyak
+  // sheet lama emang cuma punya satu tab. Wajib diisi buat sheet yang
+  // tab datanya dinamain lain (mis. "Jadwal, silabus & Rekaman").
+  const [tabName, setTabName] = useState("");
   const [loading, setLoading] = useState(false);
   const [syncingId, setSyncingId] = useState<string | null>(null);
   const [syncMsg, setSyncMsg] = useState<string | null>(null);
@@ -189,6 +194,7 @@ export default function KelasPage() {
         body: JSON.stringify({
           link: sheetLink,
           columnMap: Object.keys(map).length ? map : undefined,
+          tabName: tabName.trim() || undefined,
         }),
       });
       const data = await res.json();
@@ -223,6 +229,7 @@ export default function KelasPage() {
     setTanggalMulai("");
     setPolaPembayaran("akhir");
     setSheetLink("");
+    setTabName("");
     setPreview(null);
     setColumnMap({});
     setShowManualMap(false);
@@ -241,6 +248,7 @@ export default function KelasPage() {
     // extractSheetId di server nerima dua-duanya, jadi user boleh paste
     // link penuh buat nggantinya.
     setSheetLink(k.navigatorSheetId ?? "");
+    setTabName(k.navigatorTabName ?? "");
     setPreview(null);
     setColumnMap({});
     setShowManualMap(false);
@@ -318,6 +326,7 @@ export default function KelasPage() {
             tanggalMulai: tanggalMulai || null,
             polaPembayaran,
             navigatorSheetId: sheetLink || null,
+            navigatorTabName: tabName || null,
             // Cuma kirim mapping kalau user emang nyetel ulang di sesi edit
             // ini; kalau nggak, mapping lama di DB dibiarin apa adanya.
             ...(Object.keys(columnMap).length ? { navigatorColumnMap: columnMap } : {}),
@@ -341,6 +350,7 @@ export default function KelasPage() {
             tanggalMulai: tanggalMulai || undefined,
             polaPembayaran,
             navigatorSheetId: sheetLink || undefined,
+            navigatorTabName: tabName || undefined,
             navigatorColumnMap: Object.keys(columnMap).length ? columnMap : undefined,
           }),
         });
@@ -860,6 +870,36 @@ export default function KelasPage() {
                 {checking ? "Ngecek..." : "Cek link"}
               </button>
             </div>
+
+            {sheetLink.trim() && (
+              <div className="flex flex-col gap-1.5">
+                <label
+                  htmlFor="kelas-tab"
+                  className="font-geist text-label-sm text-text-muted"
+                >
+                  Nama tab sheet (opsional)
+                </label>
+                <input
+                  id="kelas-tab"
+                  className={inputClass}
+                  placeholder='Kosongin kalau tab-nya "Sheet1" atau cuma ada 1 tab'
+                  value={tabName}
+                  onChange={(e) => {
+                    setTabName(e.target.value);
+                    setPreview(null);
+                    setColumnMap({});
+                    setShowManualMap(false);
+                  }}
+                />
+                <p className="font-inter text-label-sm text-text-muted">
+                  Isi kalau sheet-nya punya banyak tab (mis. Master, Jadwal, Mentoring) -
+                  salin persis nama tab-nya dari baris tab paling bawah Google Sheets,
+                  termasuk spasi &amp; tanda baca. Google Sheets diem-diem nampilin tab
+                  lain kalau nama tab-nya salah ketik, bukan error - klik &quot;Cek
+                  link&quot; buat mastiin kolom yang kedetect emang bener.
+                </p>
+              </div>
+            )}
 
             {preview && preview.error && (
               <p className="rounded-lg border border-error-container bg-error-container/40 p-3 font-inter text-body-sm text-on-error-container">
