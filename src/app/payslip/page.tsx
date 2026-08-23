@@ -361,6 +361,18 @@ export default function PayslipPage() {
     setExportSaving(false);
   }
 
+  /**
+   * Bungkus nilai pakai tanda kutip kalau isinya ada tab/newline/kutip -
+   * aturan quoting TSV/CSV standar yang Google Sheets paham pas paste.
+   * items_json server udah dikirim satu baris (gak ada newline), tapi ini
+   * lapisan pengaman kedua kalau suatu saat ada field lain yang kebawa
+   * karakter aneh (mis. nama trainer yang ada tab-nya).
+   */
+  function tsvCell(v: string): string {
+    if (/[\t\n"]/.test(v)) return `"${v.replace(/"/g, '""')}"`;
+    return v;
+  }
+
   /** Satu baris TSV, urutan kolom persis sesuai sheet trigger n8n. */
   function exportTsvRow(r: Record<string, string>): string {
     return [
@@ -372,7 +384,9 @@ export default function PayslipPage() {
       r.nomor_rekening,
       r.nama_pemilik_rekening,
       r.items_json,
-    ].join("\t");
+    ]
+      .map(tsvCell)
+      .join("\t");
   }
 
   async function copyExportRow() {

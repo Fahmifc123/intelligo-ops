@@ -112,7 +112,12 @@ export async function GET(
     bank: p.bankName,
     nomor_rekening: p.bankAccountNumber,
     nama_pemilik_rekening: p.bankAccountName,
-    items_json: JSON.stringify(itemsJson, null, 2),
+    // Sengaja gak di-pretty-print (tanpa `null, 2`) - hasilnya satu baris
+    // tanpa newline. items_json ini ditempel ke satu SEL Google Sheet;
+    // newline di dalam JSON pretty-print bikin Sheets mecah isinya ke
+    // baris-baris terpisah pas di-paste, bukan tetap satu sel. n8n cuma
+    // butuh JSON.parse() ini, jadi gak perlu cantik buat manusia.
+    items_json: JSON.stringify(itemsJson),
   });
 }
 
