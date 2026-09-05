@@ -4,16 +4,26 @@ import { payslip, payslipItem, sesi } from "@/db/schema";
 import { eq, inArray, ne, and } from "drizzle-orm";
 import { hitungRatePerSesi } from "@/lib/feeQuery";
 
-const VALID_STATUS = ["draft", "belum_dibayar", "lunas"] as const;
+const VALID_STATUS = ["draft", "belum_dibayar", "terkirim", "lunas"] as const;
 type Status = (typeof VALID_STATUS)[number];
 
-// Transisi yang diizinkan. Alurnya linear (draft -> belum_dibayar -> lunas),
-// tapi "belum_dibayar" boleh balik ke "draft" buat koreksi sesi sebelum
-// beneran dibayar. Begitu "lunas", udah final - gak ada jalan balik dari sini
-// lewat endpoint ini (biar histori penggajian gak berubah-ubah).
+// Transisi yang diizinkan. Alurnya linear:
+//   draft -> belum_dibayar -> terkirim -> lunas
+// "terkirim" = payslip-nya udah di-export & (di luar sistem ini) email/WA-nya
+// udah dikirim ke trainer - dipicu otomatis begitu admin generate baris
+// export n8n (lihat /api/payslip/export-n8n & tombol "Generate baris export"
+// di halaman Payslip). "Tandai Lunas" cuma bisa diklik dari status ini,
+// biar gak ada yang ke-mark lunas sebelum trainer-nya beneran dikabarin.
+//
+// "belum_dibayar" boleh balik ke "draft" buat koreksi sesi sebelum beneran
+// dikirim, dan "terkirim" boleh balik ke "belum_dibayar" kalau ternyata ada
+// yang perlu dikoreksi setelah export (mis. salah jadwal). Begitu "lunas",
+// udah final - gak ada jalan balik dari sini lewat endpoint ini (biar
+// histori penggajian gak berubah-ubah).
 const ALLOWED_TRANSITIONS: Record<Status, Status[]> = {
   draft: ["belum_dibayar"],
-  belum_dibayar: ["draft", "lunas"],
+  belum_dibayar: ["draft", "terkirim"],
+  terkirim: ["belum_dibayar", "lunas"],
   lunas: [],
 };
 

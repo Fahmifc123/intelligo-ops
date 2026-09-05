@@ -61,12 +61,16 @@ type Payslip = {
 const STATUS_LABEL: Record<string, string> = {
   draft: "Draft",
   belum_dibayar: "Belum Dibayar",
+  // Udah di-export (email/WA ke trainer udah dikirim di luar sistem ini) -
+  // tinggal nunggu tim transfer, baru boleh ditandai Lunas.
+  terkirim: "Menunggu Transfer",
   lunas: "Lunas",
 };
 
 const STATUS_STYLE: Record<string, string> = {
   draft: "bg-surface-container text-on-surface-variant",
   belum_dibayar: "bg-warning/10 text-warning",
+  terkirim: "bg-secondary-container/20 text-secondary",
   lunas: "bg-success/10 text-success",
 };
 
@@ -487,7 +491,26 @@ export default function PayslipPage() {
         setExportError(data.error ?? "Gagal generate export");
       } else {
         setExportRows(data);
-        load(); // refresh biar jadwalPembayaran ke-update di list
+        // Baris export ini yang bakal ditempel ke sheet trigger n8n buat
+        // ngirim email/WA ke trainer - begitu berhasil digenerate, payslip
+        // yang masih "belum_dibayar" otomatis naik ke "terkirim" biar
+        // "Tandai Lunas" cuma bisa diklik setelah ini (nunggu tim transfer).
+        const perluDitandai = exportTarget.ids.filter((id) => {
+          const p = payslips.find((row) => row.id === id);
+          return p?.status === "belum_dibayar";
+        });
+        if (perluDitandai.length > 0) {
+          await Promise.all(
+            perluDitandai.map((id) =>
+              fetch(`/api/payslip/${id}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ status: "terkirim" }),
+              })
+            )
+          );
+        }
+        load(); // refresh biar jadwalPembayaran & status ke-update di list
       }
     } catch (e) {
       setExportError(e instanceof Error ? e.message : String(e));
@@ -571,7 +594,13 @@ export default function PayslipPage() {
 
   // --- Analytics, dihitung dari periodePayslips (udah discope filter periode) ---
   const analytics = useMemo(() => {
-    const belumDibayar = periodePayslips.filter((p) => p.status === "belum_dibayar");
+    // "Belum Dibayar" di analytics nyakup dua status - "belum_dibayar" DAN
+    // "terkirim" (udah di-export, tinggal nunggu transfer) - dua-duanya
+    // sama-sama duit yang masih harus dibayar, cuma beda udah dikabarin
+    // ke trainer atau belum.
+    const belumDibayar = periodePayslips.filter(
+      (p) => p.status === "belum_dibayar" || p.status === "terkirim"
+    );
     const totalBelumDibayar = belumDibayar.reduce((a, p) => a + p.totalFee, 0);
 
     const lunas = periodePayslips.filter((p) => p.status === "lunas");
@@ -847,6 +876,7 @@ export default function PayslipPage() {
           { key: "all", label: "Semua" },
           { key: "draft", label: "Draft" },
           { key: "belum_dibayar", label: "Belum Dibayar" },
+          { key: "terkirim", label: "Menunggu Transfer" },
           { key: "lunas", label: "Lunas" },
         ].map((opt) => (
           <button
@@ -1007,13 +1037,13 @@ export default function PayslipPage() {
                 )}
                 {p.status === "belum_dibayar" && (
                   <>
-                    <button
-                      onClick={() => ubahStatus(p.id, "lunas")}
-                      className="flex items-center gap-1.5 rounded-lg bg-success px-4 py-2 font-geist text-label-sm text-white transition-colors hover:opacity-90"
+                    <span
+                      title="Export dulu (email/WA ke trainer) sebelum bisa ditandai lunas"
+                      className="flex items-center gap-1.5 self-center font-inter text-label-sm text-text-muted"
                     >
-                      <span className="material-symbols-outlined text-[16px]">check_circle</span>
-                      Tandai Lunas
-                    </button>
+                      <span className="material-symbols-outlined text-[16px]">info</span>
+                      Belum di-export
+                    </span>
                     <button
                       onClick={() => ubahStatus(p.id, "draft")}
                       title="Balikin ke draft buat koreksi sesi"
@@ -1023,10 +1053,30 @@ export default function PayslipPage() {
                     </button>
                   </>
                 )}
-                {(p.status === "belum_dibayar" || p.status === "lunas") && (
+                {p.status === "terkirim" && (
+                  <>
+                    <button
+                      onClick={() => ubahStatus(p.id, "lunas")}
+                      className="flex items-center gap-1.5 rounded-lg bg-success px-4 py-2 font-geist text-label-sm text-white transition-colors hover:opacity-90"
+                    >
+                      <span className="material-symbols-outlined text-[16px]">check_circle</span>
+                      Tandai Lunas
+                    </button>
+                    <button
+                      onClick={() => ubahStatus(p.id, "belum_dibayar")}
+                      title="Balikin ke belum dibayar kalau ada yang perlu dikoreksi setelah export"
+                      className="rounded-lg border border-outline-variant px-4 py-2 font-geist text-label-sm text-on-surface-variant transition-colors hover:bg-surface-container"
+                    >
+                      Batalkan Kirim
+                    </button>
+                  </>
+                )}
+                {(p.status === "belum_dibayar" ||
+                  p.status === "terkirim" ||
+                  p.status === "lunas") && (
                   <button
                     onClick={() => openExport(p)}
-                    title="Generate baris siap tempel ke sheet trigger n8n"
+                    title="Generate baris siap tempel ke sheet trigger n8n - otomatis nandain payslip ini 'terkirim'"
                     className="flex items-center gap-1.5 rounded-lg border border-outline-variant px-4 py-2 font-geist text-label-sm text-on-surface-variant transition-colors hover:bg-surface-container"
                   >
                     <span className="material-symbols-outlined text-[16px]">output</span>
