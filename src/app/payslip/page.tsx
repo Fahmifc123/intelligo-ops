@@ -107,13 +107,23 @@ export default function PayslipPage() {
   // dan React nolak impure call langsung di badan komponen/useMemo.
   const [now] = useState(() => Date.now());
 
-  // Modal export ke format n8n. null = tertutup.
-  const [exportPayslip, setExportPayslip] = useState<Payslip | null>(null);
+  // Modal export ke format n8n. null = tertutup. `ids` bisa lebih dari satu
+  // kalau admin milih beberapa payslip trainer yang sama buat digabung jadi
+  // satu baris export (lihat exportSelection di bawah).
+  const [exportTarget, setExportTarget] = useState<{
+    ids: string[];
+    label: string;
+    jadwalPembayaran: string | null;
+  } | null>(null);
   const [exportJadwal, setExportJadwal] = useState("");
   const [exportSaving, setExportSaving] = useState(false);
   const [exportRows, setExportRows] = useState<Record<string, string> | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
   const [exportCopied, setExportCopied] = useState(false);
+
+  // Centang beberapa payslip (trainer/karyawan yang sama) buat digabung
+  // jadi satu baris export n8n - lihat tombol "Export Gabungan" di list.
+  const [exportSelection, setExportSelection] = useState<Set<string>>(new Set());
 
   async function load() {
     setLoading(true);
@@ -396,36 +406,65 @@ export default function PayslipPage() {
     if (res.ok) load();
   }
 
-  /** Buka modal export n8n - isi jadwal pembayaran dari yang udah ada (kalau ada). */
+  /** Buka modal export n8n buat SATU payslip - isi jadwal dari yang udah ada (kalau ada). */
   function openExport(p: Payslip) {
-    setExportPayslip(p);
+    setExportTarget({ ids: [p.id], label: namaPayslip(p), jadwalPembayaran: p.jadwalPembayaran });
     setExportJadwal(p.jadwalPembayaran ?? "");
     setExportRows(null);
     setExportError(null);
     setExportCopied(false);
   }
 
-  /** Simpan jadwal pembayaran (kalau berubah), lalu ambil baris export siap tempel. */
+  function toggleExportSelection(id: string) {
+    setExportSelection((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  /** Buka modal export n8n buat BEBERAPA payslip trainer yang sama sekaligus - digabung jadi satu baris. */
+  function openExportBatch() {
+    const dipilih = payslips.filter((p) => exportSelection.has(p.id));
+    if (dipilih.length === 0) return;
+    setExportTarget({
+      ids: dipilih.map((p) => p.id),
+      label: namaPayslip(dipilih[0]),
+      jadwalPembayaran: null,
+    });
+    setExportJadwal("");
+    setExportRows(null);
+    setExportError(null);
+    setExportCopied(false);
+  }
+
+  /** Simpan jadwal pembayaran ke semua payslip yang lagi di-export, lalu ambil baris export siap tempel. */
   async function generateExport() {
-    if (!exportPayslip) return;
+    if (!exportTarget) return;
     setExportSaving(true);
     setExportError(null);
     try {
-      if (exportJadwal !== (exportPayslip.jadwalPembayaran ?? "")) {
-        const patchRes = await fetch(`/api/payslip/${exportPayslip.id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ jadwalPembayaran: exportJadwal || null }),
-        });
-        if (!patchRes.ok) {
-          const d = await patchRes.json();
+      if (exportJadwal) {
+        const hasil = await Promise.all(
+          exportTarget.ids.map((id) =>
+            fetch(`/api/payslip/${id}`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ jadwalPembayaran: exportJadwal }),
+            })
+          )
+        );
+        const gagal = hasil.find((r) => !r.ok);
+        if (gagal) {
+          const d = await gagal.json();
           setExportError(d.error ?? "Gagal simpan jadwal pembayaran");
           setExportSaving(false);
           return;
         }
       }
 
-      const res = await fetch(`/api/payslip/${exportPayslip.id}/export-n8n`);
+      const res = await fetch(`/api/payslip/export-n8n?ids=${exportTarget.ids.join(",")}`);
       const data = await res.json();
       if (!res.ok) {
         setExportError(data.error ?? "Gagal generate export");
@@ -807,6 +846,44 @@ export default function PayslipPage() {
         ))}
       </div>
 
+      {/* Bar aksi gabungan - muncul begitu ada payslip yang dicentang buat export gabungan */}
+      {exportSelection.size > 0 && (() => {
+        const dipilih = payslips.filter((p) => exportSelection.has(p.id));
+        const trainerIdsDipilih = new Set(dipilih.map((p) => p.trainerId));
+        const beda = trainerIdsDipilih.size > 1;
+        return (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-primary/30 bg-primary/5 px-5 py-3">
+            <span className="font-inter text-body-sm text-on-surface-variant">
+              {dipilih.length} payslip dipilih
+              {!beda && ` dari ${namaPayslip(dipilih[0])}`}
+              {beda && (
+                <span className="ml-2 text-error">
+                  - harus dari trainer/karyawan yang sama buat digabung
+                </span>
+              )}
+            </span>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setExportSelection(new Set())}
+                className="rounded-lg border border-outline-variant bg-surface px-4 py-2 font-geist text-label-sm text-on-surface-variant transition-colors hover:bg-surface-container"
+              >
+                Batal pilih
+              </button>
+              <button
+                type="button"
+                onClick={openExportBatch}
+                disabled={beda}
+                className="flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 font-geist text-label-sm text-on-primary transition-colors hover:bg-primary-container disabled:opacity-50"
+              >
+                <span className="material-symbols-outlined text-[16px]">output</span>
+                Export Gabungan
+              </button>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* List payslip */}
       <div className="flex flex-col gap-stack-md">
         {loading && (
@@ -829,6 +906,15 @@ export default function PayslipPage() {
             className="flex flex-col gap-4 rounded-xl border border-outline-variant bg-surface-container-lowest p-5 transition-shadow hover:shadow-md lg:flex-row lg:items-center lg:justify-between"
           >
             <div className="flex items-start gap-4">
+              {p.status !== "draft" && (
+                <input
+                  type="checkbox"
+                  aria-label={`Pilih payslip ${namaPayslip(p)} periode ${p.periode} buat export gabungan`}
+                  checked={exportSelection.has(p.id)}
+                  onChange={() => toggleExportSelection(p.id)}
+                  className="mt-3 h-4 w-4 shrink-0 rounded border-outline-variant text-primary focus:ring-primary"
+                />
+              )}
               <div
                 className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-sm font-bold ${avatarClass(
                   idPayslip(p)
@@ -1342,15 +1428,16 @@ export default function PayslipPage() {
       )}
 
       {/* Modal export ke format n8n */}
-      {exportPayslip && (
+      {exportTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-on-surface/40 p-4">
           <div className="flex max-h-[85vh] w-full max-w-xl flex-col overflow-hidden rounded-xl bg-surface-container-lowest shadow-lg">
             <div className="flex items-center justify-between border-b border-outline-variant px-6 py-4">
               <h2 className="font-geist text-headline-sm text-primary">
-                Export ke n8n &mdash; {namaPayslip(exportPayslip)}
+                Export ke n8n &mdash; {exportTarget.label}
+                {exportTarget.ids.length > 1 && ` (${exportTarget.ids.length} payslip digabung)`}
               </h2>
               <button
-                onClick={() => setExportPayslip(null)}
+                onClick={() => setExportTarget(null)}
                 className="rounded-full p-1.5 text-text-muted transition-colors hover:bg-surface-container"
               >
                 <span className="material-symbols-outlined">close</span>
