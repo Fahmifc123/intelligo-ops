@@ -240,15 +240,17 @@ export async function PATCH(
     if (err) return NextResponse.json({ error: err }, { status: 400 });
   }
 
-  // Kelas tanpa navigator sheet gak punya sumber otomatis buat sesi-nya -
-  // biasanya admin harus nambahin satu-satu manual di halaman Sesi. Kalau
-  // trainer utama dikasih skema "paket" (udah tau total fee & target
+  // Kelas tanpa navigator sheet gak punya sumber otomatis buat sesi-nya.
+  // Kalau trainer utama dikasih skema "paket" (udah tau total fee & target
   // sesinya dari awal) DAN kelas ini masih belum punya sesi sama sekali,
-  // auto-generate placeholder sesi sejumlah target-nya sekali jalan - biar
-  // langsung ada "Sesi (N)" yang tinggal ditandai selesai satu-satu, gak
-  // usah nambah baris manual dulu. Cuma jalan sekali pas kelas masih kosong;
-  // kalau target diubah belakangan atau kelas udah punya sesi (manual atau
-  // hasil sync navigator), gak diotak-atik lagi biar gak dobel/ilangin histori.
+  // auto-generate sesinya sekali jalan - LANGSUNG ditandai "selesai" (bukan
+  // "belum"), karena kelas manual kayak gini dipakai buat nyatet kelas yang
+  // emang udah kelar diajar (gak ada tracking progress kayak kelas navigator
+  // yang sesinya nyata sinkron dari sheet). Fee paket-nya kehitung penuh
+  // begitu kelas ini dibuat, gak nunggu ditandai selesai satu-satu. Cuma
+  // jalan sekali pas kelas masih kosong; kalau target diubah belakangan
+  // atau kelas udah punya sesi (manual atau hasil sync navigator), gak
+  // diotak-atik lagi biar gak dobel/ilangin histori.
   if (!row.navigatorSheetId) {
     const sesiSudahAda = await db.select({ id: sesi.id }).from(sesi).where(eq(sesi.kelasId, id));
     if (sesiSudahAda.length === 0) {
@@ -259,7 +261,7 @@ export async function PATCH(
           Array.from({ length: target }, (_, i) => ({
             kelasId: id,
             pertemuanKe: i + 1,
-            status: "belum" as const,
+            status: "selesai" as const,
           }))
         );
       }
