@@ -31,13 +31,13 @@ type SesiDetail = {
 type Payslip = {
   id: string;
   // "trainer" (default) = direkap dari sesi. "karyawan" = non-trainer
-  // (marketing, admin, dst), fee-nya nominal manual, gak ada sesi.
+  // (marketing, admin, dst), fee-nya nominal manual, gak ada sesi. Dua-duanya
+  // sama-sama baris di tabel trainer, dibedain lewat kolom tipe.
   tipe: "trainer" | "karyawan";
-  trainerId: string | null;
-  trainerNama: string | null;
-  karyawanId: string | null;
-  karyawanNama: string | null;
-  karyawanPosisi: string | null;
+  trainerId: string;
+  trainerNama: string;
+  // Cuma keisi kalau tipe "karyawan".
+  posisi: string | null;
   nominal: number | null;
   periode: string;
   status: string;
@@ -120,7 +120,7 @@ export default function PayslipPage() {
     const [p, t, kw, k] = await Promise.all([
       fetch("/api/payslip").then((r) => r.json()),
       fetch("/api/trainer").then((r) => r.json()),
-      fetch("/api/karyawan").then((r) => r.json()),
+      fetch("/api/trainer?tipe=karyawan").then((r) => r.json()),
       fetch("/api/kelas").then((r) => r.json()),
     ]);
     setPayslips(p);
@@ -171,14 +171,14 @@ export default function PayslipPage() {
     setWizardOpen(true);
 
     if (p.tipe === "karyawan") {
-      setWKaryawanId(p.karyawanId ?? "");
+      setWKaryawanId(p.trainerId);
       setWNominal(p.nominal != null ? String(p.nominal) : "");
       setStep(3);
       return;
     }
 
     const kelasId = p.sesi[0]?.kelasId ?? "";
-    setWTrainerId(p.trainerId ?? "");
+    setWTrainerId(p.trainerId);
     setWKelasId(kelasId);
     setWSesiLoading(true);
     setStep(3);
@@ -195,12 +195,12 @@ export default function PayslipPage() {
     setWizardOpen(false);
   }
 
-  /** Nama & id buat ditampilin - trainer atau karyawan tergantung tipe payslip-nya. */
+  /** Nama & id buat ditampilin - satu tabel trainer buat trainer maupun karyawan. */
   function namaPayslip(p: Payslip) {
-    return p.tipe === "karyawan" ? (p.karyawanNama ?? "-") : (p.trainerNama ?? "-");
+    return p.trainerNama;
   }
   function idPayslip(p: Payslip) {
-    return p.tipe === "karyawan" ? (p.karyawanId as string) : (p.trainerId as string);
+    return p.trainerId;
   }
 
   async function pickTrainer(trainerId: string) {
@@ -334,7 +334,7 @@ export default function PayslipPage() {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               tipe: "karyawan",
-              karyawanId: wKaryawanId,
+              trainerId: wKaryawanId,
               periode: wPeriode,
               nominal: Number(wNominal),
             }),
@@ -531,25 +531,22 @@ export default function PayslipPage() {
     const tunggakanTerlama = tunggakan[0] ?? null;
 
     // Breakdown per orang (trainer maupun karyawan): lunas vs belum dibayar,
-    // diurutin dari total terbesar biar yang paling perlu perhatian ada di
-    // atas. Key-nya trainerId ATAU karyawanId, tergantung tipe payslip-nya.
+    // diurutin dari total terbesar biar yang paling perlu perhatian ada di atas.
     const perTrainerMap = new Map<
       string,
       { trainerId: string; trainerNama: string; lunas: number; belumDibayar: number }
     >();
     for (const p of periodePayslips) {
       if (p.status === "draft") continue; // draft belum final, gak masuk breakdown
-      const key = p.tipe === "karyawan" ? (p.karyawanId as string) : (p.trainerId as string);
-      const nama = p.tipe === "karyawan" ? (p.karyawanNama as string) : (p.trainerNama as string);
-      const row = perTrainerMap.get(key) ?? {
-        trainerId: key,
-        trainerNama: nama,
+      const row = perTrainerMap.get(p.trainerId) ?? {
+        trainerId: p.trainerId,
+        trainerNama: p.trainerNama,
         lunas: 0,
         belumDibayar: 0,
       };
       if (p.status === "lunas") row.lunas += p.totalFee;
       else row.belumDibayar += p.totalFee;
-      perTrainerMap.set(key, row);
+      perTrainerMap.set(p.trainerId, row);
     }
     const perTrainer = Array.from(perTrainerMap.values()).sort(
       (a, b) => b.lunas + b.belumDibayar - (a.lunas + a.belumDibayar)
@@ -844,7 +841,7 @@ export default function PayslipPage() {
                   <h3 className="font-geist text-headline-sm text-primary">{namaPayslip(p)}</h3>
                   {p.tipe === "karyawan" && (
                     <span className="inline-flex items-center rounded-full bg-surface-container px-2.5 py-1 font-geist text-label-sm text-on-surface-variant">
-                      {p.karyawanPosisi}
+                      {p.posisi}
                     </span>
                   )}
                   <span

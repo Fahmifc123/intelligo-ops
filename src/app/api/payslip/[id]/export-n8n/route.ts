@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
-import { payslip, payslipItem, sesi, kelas, trainer, karyawan } from "@/db/schema";
+import { payslip, payslipItem, sesi, kelas, trainer } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { BULAN_LABEL } from "@/lib/ui";
 
@@ -26,25 +26,19 @@ export async function GET(
       id: payslip.id,
       tipe: payslip.tipe,
       trainerId: payslip.trainerId,
-      karyawanId: payslip.karyawanId,
       nominal: payslip.nominal,
       periode: payslip.periode,
       status: payslip.status,
       jadwalPembayaran: payslip.jadwalPembayaran,
       trainerNama: trainer.nama,
+      posisi: trainer.posisi,
       trainerEmail: trainer.email,
       bankName: trainer.bankName,
       bankAccountNumber: trainer.bankAccountNumber,
       bankAccountName: trainer.bankAccountName,
-      karyawanNama: karyawan.nama,
-      karyawanPosisi: karyawan.posisi,
-      karyawanBankName: karyawan.bankName,
-      karyawanBankAccountNumber: karyawan.bankAccountNumber,
-      karyawanBankAccountName: karyawan.bankAccountName,
     })
     .from(payslip)
     .leftJoin(trainer, eq(payslip.trainerId, trainer.id))
-    .leftJoin(karyawan, eq(payslip.karyawanId, karyawan.id))
     .where(eq(payslip.id, id));
 
   if (!p) return NextResponse.json({ error: "not found" }, { status: 404 });
@@ -56,13 +50,14 @@ export async function GET(
     );
   }
 
-  // Karyawan non-trainer gak punya email tersimpan (belum ada field-nya di
-  // tabel karyawan) - kolom "nama" tetap wajib di sheet n8n, sisanya sama.
+  // Karyawan non-trainer gak wajib punya email (kolomnya sama kayak
+  // trainer, cuma jarang keisi buat karyawan) - kolom "nama" tetap wajib
+  // di sheet n8n, sisanya sama.
   if (p.tipe === "karyawan") {
     const kurangKaryawan: string[] = [];
-    if (!p.karyawanBankName) kurangKaryawan.push("nama bank");
-    if (!p.karyawanBankAccountNumber) kurangKaryawan.push("nomor rekening");
-    if (!p.karyawanBankAccountName) kurangKaryawan.push("nama pemilik rekening");
+    if (!p.bankName) kurangKaryawan.push("nama bank");
+    if (!p.bankAccountNumber) kurangKaryawan.push("nomor rekening");
+    if (!p.bankAccountName) kurangKaryawan.push("nama pemilik rekening");
     if (!p.jadwalPembayaran) kurangKaryawan.push("jadwal pembayaran");
     if (kurangKaryawan.length > 0) {
       return NextResponse.json(
@@ -78,14 +73,14 @@ export async function GET(
     return NextResponse.json({
       periode: periodeLabel(p.periode),
       jadwal_pembayaran: formatTanggalIndo(p.jadwalPembayaran as string),
-      nama: p.karyawanNama,
-      email: "",
-      bank: p.karyawanBankName,
-      nomor_rekening: p.karyawanBankAccountNumber,
-      nama_pemilik_rekening: p.karyawanBankAccountName,
+      nama: p.trainerNama,
+      email: p.trainerEmail ?? "",
+      bank: p.bankName,
+      nomor_rekening: p.bankAccountNumber,
+      nama_pemilik_rekening: p.bankAccountName,
       items_json: JSON.stringify([
         {
-          program: p.karyawanPosisi,
+          program: p.posisi,
           detail: periodeLabel(p.periode),
           jumlah_sesi: 1,
           fee_per_sesi: Math.round(p.nominal ?? 0),

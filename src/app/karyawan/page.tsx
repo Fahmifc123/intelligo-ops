@@ -33,7 +33,7 @@ export default function KaryawanPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   async function load() {
-    const res = await fetch("/api/karyawan");
+    const res = await fetch("/api/trainer?tipe=karyawan");
     setKaryawanList(await res.json());
   }
 
@@ -47,11 +47,12 @@ export default function KaryawanPage() {
     setLoading(true);
     setFormMsg(null);
     try {
-      const res = await fetch("/api/karyawan", {
+      const res = await fetch("/api/trainer", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           nama,
+          tipe: "karyawan",
           posisi,
           bankName: bankName || undefined,
           bankAccountNumber: bankAccountNumber || undefined,
@@ -91,7 +92,7 @@ export default function KaryawanPage() {
   async function saveEdit() {
     if (!editId) return;
     setEditSaving(true);
-    const res = await fetch(`/api/karyawan/${editId}`, {
+    const res = await fetch(`/api/trainer/${editId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(editDraft),
@@ -106,7 +107,7 @@ export default function KaryawanPage() {
   async function deleteKaryawan(k: Karyawan) {
     if (!window.confirm(`Hapus karyawan "${k.nama}"? Tindakan ini gak bisa dibatalin.`)) return;
     setDeletingId(k.id);
-    const res = await fetch(`/api/karyawan/${k.id}`, { method: "DELETE" });
+    const res = await fetch(`/api/trainer/${k.id}`, { method: "DELETE" });
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
       window.alert(data.error ?? "Gagal hapus karyawan.");

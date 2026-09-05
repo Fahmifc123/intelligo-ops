@@ -1,9 +1,18 @@
 import { sqliteTable, text, integer, real } from "drizzle-orm/sqlite-core";
 import { sql } from "drizzle-orm";
 
+// Satu tabel buat trainer MAUPUN karyawan non-trainer (marketing, admin,
+// dst) - dibedain lewat `tipe`. Karyawan non-trainer gak ngajar kelas, jadi
+// gak pernah punya sesi/feeRule/jadi trainerId di kelas manapun - cuma
+// numpang di sini biar payslip-nya bisa pakai infrastruktur (rekening,
+// export n8n) yang sama kayak trainer, tanpa bikin tabel terpisah.
 export const trainer = sqliteTable("trainer", {
   id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   nama: text("nama").notNull(),
+  tipe: text("tipe").notNull().default("trainer"), // trainer | karyawan
+  // Cuma diisi (dan cuma dipakai) kalau tipe === "karyawan", mis.
+  // "Marketing", "Admin", "Finance". Null buat trainer beneran.
+  posisi: text("posisi"),
   email: text("email"),
   // Legacy: field gabungan lama, gak dipakai di form manapun (dicek kosong
   // di semua data produksi). Dipertahankan biar kolom lama gak ilang tanpa
@@ -12,19 +21,6 @@ export const trainer = sqliteTable("trainer", {
   // Buat export payslip ke format n8n (lihat /api/payslip/[id]/export-n8n).
   // Diisi manual, atau di-sync dari Google Form pendaftaran trainer -
   // lihat syncTrainerBankInfo() di src/lib/trainerSync.ts.
-  bankName: text("bank_name"),
-  bankAccountNumber: text("bank_account_number"),
-  bankAccountName: text("bank_account_name"),
-  createdAt: text("created_at").default(sql`(current_timestamp)`),
-});
-
-// Karyawan non-trainer (marketing, admin, dst) - orang yang gak ngajar
-// kelas, jadi gak punya sesi/feeRule. Fee-nya diisi manual tiap kali bikin
-// payslip (lihat payslip.tipe === "karyawan"), bukan dihitung dari sesi.
-export const karyawan = sqliteTable("karyawan", {
-  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
-  nama: text("nama").notNull(),
-  posisi: text("posisi").notNull(), // mis. "Marketing", "Admin", "Finance"
   bankName: text("bank_name"),
   bankAccountNumber: text("bank_account_number"),
   bankAccountName: text("bank_account_name"),
@@ -133,22 +129,21 @@ export const payment = sqliteTable("payment", {
   createdAt: text("created_at").default(sql`(current_timestamp)`),
 });
 
-// Payslip: tagihan fee 1 periode (bulan) buat 1 orang - trainer ATAU
-// karyawan non-trainer, dibedain lewat `tipe`.
+// Payslip: tagihan fee 1 periode (bulan) buat 1 orang di tabel trainer -
+// bisa trainer beneran atau karyawan non-trainer, dibedain lewat `tipe`
+// (snapshot dari trainer.tipe pas payslip ini dibuat, biar gak berubah
+// retroaktif kalau tipe orangnya diubah belakangan).
 //
-//   tipe "trainer"  - trainerId notNull, karyawanId null. Isinya rekapan
-//                     sesi selesai (lihat payslipItem), totalFee dihitung
-//                     dari situ. nominal null, gak dipakai.
-//   tipe "karyawan" - karyawanId notNull, trainerId null. Karyawan
-//                     non-trainer (marketing, admin, dst) gak punya sesi
-//                     buat direkap, jadi fee-nya diisi manual ke `nominal`
-//                     tiap kali bikin payslip - gak ada payslipItem sama
-//                     sekali buat tipe ini.
+//   tipe "trainer"  - direkap dari sesi selesai (lihat payslipItem),
+//                     totalFee dihitung dari situ. nominal null, gak dipakai.
+//   tipe "karyawan" - karyawan non-trainer (marketing, admin, dst) gak
+//                     punya sesi buat direkap, jadi fee-nya diisi manual ke
+//                     `nominal` tiap kali bikin payslip - gak ada
+//                     payslipItem sama sekali buat tipe ini.
 export const payslip = sqliteTable("payslip", {
   id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   tipe: text("tipe").notNull().default("trainer"), // trainer | karyawan
-  trainerId: text("trainer_id").references(() => trainer.id),
-  karyawanId: text("karyawan_id").references(() => karyawan.id),
+  trainerId: text("trainer_id").notNull().references(() => trainer.id),
   // Nominal fee manual - cuma dipakai buat tipe "karyawan" (fee trainer
   // tetap dihitung dari payslipItem, biar snapshot rate per sesi gak ilang).
   nominal: real("nominal"),

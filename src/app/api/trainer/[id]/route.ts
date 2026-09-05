@@ -20,11 +20,15 @@ export async function PATCH(
   if (body.nama !== undefined && !String(body.nama).trim()) {
     return NextResponse.json({ error: "nama gak boleh kosong" }, { status: 400 });
   }
+  if (body.posisi !== undefined && existing.tipe === "karyawan" && !String(body.posisi).trim()) {
+    return NextResponse.json({ error: "posisi gak boleh kosong" }, { status: 400 });
+  }
 
   const [row] = await db
     .update(trainer)
     .set({
       ...(body.nama !== undefined && { nama: String(body.nama).trim() }),
+      ...(body.posisi !== undefined && { posisi: body.posisi || null }),
       ...(body.email !== undefined && { email: body.email || null }),
       ...(body.bankName !== undefined && { bankName: body.bankName || null }),
       ...(body.bankAccountNumber !== undefined && {
@@ -70,7 +74,7 @@ export async function DELETE(
 
   if (alasan.length > 0) {
     return NextResponse.json(
-      { error: `Trainer ini masih ${alasan.join(", ")}. Pindahkan atau hapus dulu sebelum trainer bisa dihapus.` },
+      { error: `Data ini masih ${alasan.join(", ")}. Pindahkan atau hapus dulu sebelum bisa dihapus.` },
       { status: 409 }
     );
   }
