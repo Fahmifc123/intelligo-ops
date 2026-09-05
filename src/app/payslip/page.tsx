@@ -891,7 +891,11 @@ export default function PayslipPage() {
           >
             {opt.label}
             {opt.key !== "all" &&
-              ` (${payslips.filter((p) => p.status === opt.key).length})`}
+              // Discope periodeFilter juga - kalau nggak, badge di sini bisa
+              // nyebut angka yang beda dari jumlah kartu yang kelihatan
+              // (mis. "(2)" padahal cuma 1 kartu, karena yang satu lagi
+              // ternyata payslip periode lain).
+              ` (${periodePayslips.filter((p) => p.status === opt.key).length})`}
           </button>
         ))}
       </div>
