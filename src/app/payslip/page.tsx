@@ -89,7 +89,9 @@ export default function PayslipPage() {
   const [wTrainerId, setWTrainerId] = useState("");
   const [wKaryawanId, setWKaryawanId] = useState("");
   const [wNominal, setWNominal] = useState("");
-  const [wKelasId, setWKelasId] = useState("");
+  // Bisa lebih dari satu - satu payslip boleh nyakup sesi dari beberapa
+  // kelas sekaligus (mis. trainer A ngajar 3 kelas, digabung jadi 1 payslip).
+  const [wKelasIds, setWKelasIds] = useState<Set<string>>(new Set());
   const [wSesiDetail, setWSesiDetail] = useState<SesiDetail[]>([]);
   const [wSesiLoading, setWSesiLoading] = useState(false);
   const [wChecked, setWChecked] = useState<Set<string>>(new Set());
@@ -151,7 +153,7 @@ export default function PayslipPage() {
     setWTrainerId("");
     setWKaryawanId("");
     setWNominal("");
-    setWKelasId("");
+    setWKelasIds(new Set());
     setWSesiDetail([]);
     setWChecked(new Set());
     setWRangeInput("");
@@ -187,13 +189,17 @@ export default function PayslipPage() {
       return;
     }
 
-    const kelasId = p.sesi[0]?.kelasId ?? "";
+    // Payslip ini bisa nyakup sesi dari lebih dari satu kelas - kumpulin
+    // semua kelasId unik yang ada di sesi-sesinya, bukan cuma yang pertama.
+    const kelasIds = new Set(
+      p.sesi.map((s) => s.kelasId).filter((k): k is string => !!k)
+    );
     setWTrainerId(p.trainerId);
-    setWKelasId(kelasId);
+    setWKelasIds(kelasIds);
     setWSesiLoading(true);
     setStep(3);
     const data = await fetch(`/api/fee/detail?trainerId=${p.trainerId}`).then((r) => r.json());
-    const sesiKelas = (data.sesi ?? []).filter((s: SesiDetail) => s.kelasId === kelasId);
+    const sesiKelas = (data.sesi ?? []).filter((s: SesiDetail) => kelasIds.has(s.kelasId));
     setWSesiDetail(sesiKelas);
     // Sesi yang udah nempel di payslip INI SENDIRI dianggep boleh dicentang
     // (bukan "kepakai payslip lain") - makanya di-preselect di sini.
@@ -215,7 +221,7 @@ export default function PayslipPage() {
 
   async function pickTrainer(trainerId: string) {
     setWTrainerId(trainerId);
-    setWKelasId("");
+    setWKelasIds(new Set());
     setWChecked(new Set());
     setStep(2);
   }
@@ -225,14 +231,25 @@ export default function PayslipPage() {
     setStep(3);
   }
 
-  async function pickKelas(kelasId: string) {
-    setWKelasId(kelasId);
+  /** Centang/lepas satu kelas di step "Kelas" - bisa milih lebih dari satu. */
+  function toggleKelas(kelasId: string) {
+    setWKelasIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(kelasId)) next.delete(kelasId);
+      else next.add(kelasId);
+      return next;
+    });
+  }
+
+  /** Lanjut ke step sesi - ambil sesi dari SEMUA kelas yang dicentang. */
+  async function lanjutKeSesi() {
+    if (wKelasIds.size === 0) return;
     setWChecked(new Set());
     setWRangeInput("");
     setWRangeMsg(null);
     setWSesiLoading(true);
     const data = await fetch(`/api/fee/detail?trainerId=${wTrainerId}`).then((r) => r.json());
-    setWSesiDetail((data.sesi ?? []).filter((s: SesiDetail) => s.kelasId === kelasId));
+    setWSesiDetail((data.sesi ?? []).filter((s: SesiDetail) => wKelasIds.has(s.kelasId)));
     setWSesiLoading(false);
     setStep(3);
   }
@@ -529,7 +546,10 @@ export default function PayslipPage() {
   );
   const wTrainerNama = trainers.find((t) => t.id === wTrainerId)?.nama ?? "";
   const wKaryawanNama = karyawanList.find((k) => k.id === wKaryawanId)?.nama ?? "";
-  const wKelasNama = kelasList.find((k) => k.id === wKelasId)?.nama ?? "";
+  const wKelasNamaGabungan = kelasList
+    .filter((k) => wKelasIds.has(k.id))
+    .map((k) => k.nama)
+    .join(", ");
 
   // Periode yang beneran ada payslip-nya, terbaru dulu - buat dropdown filter.
   const periodeOptions = useMemo(
@@ -1141,7 +1161,7 @@ export default function PayslipPage() {
                 </div>
               )}
 
-              {/* Step 2: pilih kelas */}
+              {/* Step 2: pilih kelas - bisa lebih dari satu, digabung jadi 1 payslip */}
               {step === 2 && (
                 <div className="flex flex-col gap-3">
                   <button
@@ -1156,20 +1176,38 @@ export default function PayslipPage() {
                       Trainer ini belum punya kelas.
                     </p>
                   )}
+                  {kelasTrainer.length > 0 && (
+                    <p className="font-inter text-body-sm text-text-muted">
+                      Centang satu atau beberapa kelas - kalau lebih dari satu, sesinya digabung
+                      jadi satu payslip.
+                    </p>
+                  )}
                   <div className="flex flex-col gap-2">
                     {kelasTrainer.map((k) => (
-                      <button
+                      <label
                         key={k.id}
-                        onClick={() => pickKelas(k.id)}
-                        className="flex items-center justify-between rounded-lg border border-outline-variant px-4 py-3 text-left transition-colors hover:border-primary hover:bg-neutral-light-bg"
+                        className="flex cursor-pointer items-center gap-3 rounded-lg border border-outline-variant px-4 py-3 text-left transition-colors hover:border-primary hover:bg-neutral-light-bg"
                       >
+                        <input
+                          type="checkbox"
+                          checked={wKelasIds.has(k.id)}
+                          onChange={() => toggleKelas(k.id)}
+                          className="h-4 w-4 rounded border-outline-variant text-primary focus:ring-primary"
+                        />
                         <span className="font-inter text-body-sm text-primary">{k.nama}</span>
-                        <span className="material-symbols-outlined text-[18px] text-outline">
-                          chevron_right
-                        </span>
-                      </button>
+                      </label>
                     ))}
                   </div>
+                  {kelasTrainer.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={lanjutKeSesi}
+                      disabled={wKelasIds.size === 0}
+                      className="self-start rounded-lg bg-primary px-6 py-2.5 font-geist text-label-md text-on-primary transition-colors hover:bg-primary-container disabled:opacity-50"
+                    >
+                      Lanjut ({wKelasIds.size} kelas dipilih)
+                    </button>
+                  )}
                 </div>
               )}
 
@@ -1240,7 +1278,7 @@ export default function PayslipPage() {
                     className="flex w-fit items-center gap-1 font-geist text-label-sm text-text-muted hover:text-primary"
                   >
                     <span className="material-symbols-outlined text-[16px]">arrow_back</span>
-                    Ganti kelas ({wKelasNama})
+                    Ganti kelas ({wKelasNamaGabungan})
                   </button>
 
                   {wSesiLoading && (
@@ -1253,41 +1291,47 @@ export default function PayslipPage() {
                   )}
 
                   {/* Pilih banyak sekaligus - ngetik range jauh lebih cepat
-                      daripada nyentang 30+ sesi satu-satu. */}
+                      daripada nyentang 30+ sesi satu-satu. Cuma muncul kalau
+                      1 kelas dipilih - nomor pertemuan bisa collide antar
+                      kelas kalau digabung, jadi range gak masuk akal dipakai. */}
                   {!wSesiLoading && wSesiDetail.length > 0 && (
                     <div className="flex flex-col gap-2 rounded-lg border border-outline-variant bg-surface-container-low p-3">
                       <div className="flex flex-wrap items-center gap-2">
-                        <label
-                          htmlFor="range-sesi"
-                          className="font-geist text-label-sm text-text-muted"
-                        >
-                          Pilih range:
-                        </label>
-                        <input
-                          id="range-sesi"
-                          className={`${inputClass} w-40`}
-                          placeholder="mis. 1-33"
-                          value={wRangeInput}
-                          onChange={(e) => {
-                            setWRangeInput(e.target.value);
-                            setWRangeMsg(null);
-                          }}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") {
-                              e.preventDefault();
-                              pilihRange();
-                            }
-                          }}
-                        />
-                        <button
-                          type="button"
-                          onClick={pilihRange}
-                          disabled={!wRangeInput.trim()}
-                          className="rounded-lg bg-primary px-4 py-2 font-geist text-label-sm text-on-primary transition-colors hover:bg-primary-container disabled:opacity-50"
-                        >
-                          Centang
-                        </button>
-                        <span className="text-outline-variant">|</span>
+                        {wKelasIds.size === 1 && (
+                          <>
+                            <label
+                              htmlFor="range-sesi"
+                              className="font-geist text-label-sm text-text-muted"
+                            >
+                              Pilih range:
+                            </label>
+                            <input
+                              id="range-sesi"
+                              className={`${inputClass} w-40`}
+                              placeholder="mis. 1-33"
+                              value={wRangeInput}
+                              onChange={(e) => {
+                                setWRangeInput(e.target.value);
+                                setWRangeMsg(null);
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                  e.preventDefault();
+                                  pilihRange();
+                                }
+                              }}
+                            />
+                            <button
+                              type="button"
+                              onClick={pilihRange}
+                              disabled={!wRangeInput.trim()}
+                              className="rounded-lg bg-primary px-4 py-2 font-geist text-label-sm text-on-primary transition-colors hover:bg-primary-container disabled:opacity-50"
+                            >
+                              Centang
+                            </button>
+                            <span className="text-outline-variant">|</span>
+                          </>
+                        )}
                         <button
                           type="button"
                           onClick={pilihSemua}
@@ -1337,6 +1381,11 @@ export default function PayslipPage() {
                               Sesi {s.pertemuanKe}
                             </span>
                             <span className="flex-1 truncate font-inter text-body-sm text-on-surface-variant">
+                              {wKelasIds.size > 1 && (
+                                <span className="mr-1.5 rounded-full bg-surface-container px-2 py-0.5 font-geist text-label-sm text-text-muted">
+                                  {s.kelasNama}
+                                </span>
+                              )}
                               {s.materi ?? "-"}
                             </span>
                             <span className="w-24 shrink-0 text-right font-inter text-body-sm text-primary">
