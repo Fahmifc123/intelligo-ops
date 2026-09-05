@@ -293,7 +293,7 @@ export default function TrainerPage() {
               />
             </div>
 
-            {tipe === "karyawan" ? (
+            {tipe === "karyawan" && (
               <div className="flex flex-col gap-1.5">
                 <label
                   htmlFor="trainer-posisi"
@@ -309,23 +309,23 @@ export default function TrainerPage() {
                   onChange={(e) => setPosisi(e.target.value)}
                 />
               </div>
-            ) : (
-              <div className="flex flex-col gap-1.5">
-                <label
-                  htmlFor="trainer-email"
-                  className="font-geist text-label-sm text-text-muted"
-                >
-                  Email (dipakai buat sync rekening)
-                </label>
-                <input
-                  id="trainer-email"
-                  className={inputClass}
-                  placeholder="nama@intelligo.id"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                />
-              </div>
             )}
+
+            <div className="flex flex-col gap-1.5">
+              <label
+                htmlFor="trainer-email"
+                className="font-geist text-label-sm text-text-muted"
+              >
+                Email{tipe === "trainer" ? " (dipakai buat sync rekening)" : ""}
+              </label>
+              <input
+                id="trainer-email"
+                className={inputClass}
+                placeholder="nama@intelligo.id"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+              />
+            </div>
 
             <div className="flex flex-col gap-1.5">
               <label
@@ -442,28 +442,27 @@ export default function TrainerPage() {
                   <tr key={t.id} className="border-b border-outline-variant/50 bg-surface-container-low/40">
                     <td className="p-3 pl-6" colSpan={4}>
                       <div className="flex flex-col gap-2">
-                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-5">
+                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-6">
                           <input
                             className={inputClass}
                             placeholder="Nama"
                             value={editDraft.nama ?? ""}
                             onChange={(e) => setEditDraft((d) => ({ ...d, nama: e.target.value }))}
                           />
-                          {t.tipe === "karyawan" ? (
+                          {t.tipe === "karyawan" && (
                             <input
                               className={inputClass}
                               placeholder="Posisi"
                               value={editDraft.posisi ?? ""}
                               onChange={(e) => setEditDraft((d) => ({ ...d, posisi: e.target.value }))}
                             />
-                          ) : (
-                            <input
-                              className={inputClass}
-                              placeholder="Email"
-                              value={editDraft.email ?? ""}
-                              onChange={(e) => setEditDraft((d) => ({ ...d, email: e.target.value }))}
-                            />
                           )}
+                          <input
+                            className={inputClass}
+                            placeholder="Email"
+                            value={editDraft.email ?? ""}
+                            onChange={(e) => setEditDraft((d) => ({ ...d, email: e.target.value }))}
+                          />
                           <input
                             className={inputClass}
                             placeholder="Nama bank"
@@ -537,7 +536,18 @@ export default function TrainerPage() {
                       </div>
                     </td>
                     <td className="p-4 text-text-muted">
-                      {t.tipe === "karyawan" ? t.posisi ?? "-" : t.email ?? "-"}
+                      {t.tipe === "karyawan" ? (
+                        <div className="flex flex-col">
+                          <span>{t.posisi ?? "-"}</span>
+                          {t.email && (
+                            <span className="font-inter text-label-sm text-text-muted">
+                              {t.email}
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        (t.email ?? "-")
+                      )}
                     </td>
                     <td className="p-4 text-text-muted">
                       {t.bankName ? (
