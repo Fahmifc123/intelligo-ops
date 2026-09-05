@@ -397,15 +397,13 @@ export default function KelasPage() {
 
   async function deleteKelas(k: Kelas) {
     const { total } = progressOf(k.id);
+    // Sesi ikut kehapus otomatis (cascade) di server - kecuali ada yang
+    // udah kepakai payslip, baru diblokir (pesan error dari API dipakai).
     const konfirmasi =
       total > 0
-        ? `Kelas "${k.nama}" masih punya ${total} sesi. Hapus sesinya dulu sebelum kelas bisa dihapus.`
+        ? `Hapus kelas "${k.nama}"? ${total} sesi di dalamnya bakal ikut kehapus. Tindakan ini gak bisa dibatalin.`
         : `Hapus kelas "${k.nama}"? Tindakan ini gak bisa dibatalin.`;
 
-    if (total > 0) {
-      window.alert(konfirmasi);
-      return;
-    }
     if (!window.confirm(konfirmasi)) return;
 
     setDeletingId(k.id);

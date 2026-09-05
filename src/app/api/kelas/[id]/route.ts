@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
-import { kelas, feeRule, sesi, trainer } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { kelas, feeRule, sesi, trainer, payslipItem } from "@/db/schema";
+import { eq, inArray } from "drizzle-orm";
 import { extractSheetId } from "@/lib/navigatorSync";
 
 const VALID_TIPE = ["bootcamp", "private", "mbc", "corporate"];
@@ -272,9 +272,10 @@ export async function PATCH(
 }
 
 // DELETE /api/kelas/[id]
-// Ditolak kalau masih ada sesi - sesi nyimpen histori ngajar & bisa
-// nyangkut di payslip, jadi mending user hapus sesinya dulu secara sadar
-// daripada kita ikut hapus diam-diam.
+// Sesi kelas ini ikut kehapus otomatis (cascade) - gak perlu dihapus manual
+// satu-satu dulu. Satu-satunya yang tetap diblokir: sesi yang UDAH KEPAKAI
+// di payslip (payslipItem) - itu histori penggajian, dihapus diam-diam
+// bisa bikin payslip yang udah dibuat kehilangan jejak sesi-nya.
 export async function DELETE(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -285,13 +286,22 @@ export async function DELETE(
   if (!existing) return NextResponse.json({ error: "not found" }, { status: 404 });
 
   const sesiRows = await db.select({ id: sesi.id }).from(sesi).where(eq(sesi.kelasId, id));
-  if (sesiRows.length > 0) {
-    return NextResponse.json(
-      {
-        error: `Kelas ini masih punya ${sesiRows.length} sesi. Hapus sesinya dulu sebelum hapus kelas.`,
-      },
-      { status: 409 }
-    );
+  const sesiIds = sesiRows.map((s) => s.id);
+
+  if (sesiIds.length > 0) {
+    const terpakaiPayslip = await db
+      .select({ id: payslipItem.id })
+      .from(payslipItem)
+      .where(inArray(payslipItem.sesiId, sesiIds));
+    if (terpakaiPayslip.length > 0) {
+      return NextResponse.json(
+        {
+          error: `Kelas ini punya ${terpakaiPayslip.length} sesi yang udah masuk payslip. Batalkan/lepas dari payslip itu dulu sebelum kelas bisa dihapus.`,
+        },
+        { status: 409 }
+      );
+    }
+    await db.delete(sesi).where(eq(sesi.kelasId, id));
   }
 
   await db.delete(feeRule).where(eq(feeRule.kelasId, id));
