@@ -240,6 +240,32 @@ export async function PATCH(
     if (err) return NextResponse.json({ error: err }, { status: 400 });
   }
 
+  // Kelas tanpa navigator sheet gak punya sumber otomatis buat sesi-nya -
+  // biasanya admin harus nambahin satu-satu manual di halaman Sesi. Kalau
+  // trainer utama dikasih skema "paket" (udah tau total fee & target
+  // sesinya dari awal) DAN kelas ini masih belum punya sesi sama sekali,
+  // auto-generate placeholder sesi sejumlah target-nya sekali jalan - biar
+  // langsung ada "Sesi (N)" yang tinggal ditandai selesai satu-satu, gak
+  // usah nambah baris manual dulu. Cuma jalan sekali pas kelas masih kosong;
+  // kalau target diubah belakangan atau kelas udah punya sesi (manual atau
+  // hasil sync navigator), gak diotak-atik lagi biar gak dobel/ilangin histori.
+  if (!row.navigatorSheetId) {
+    const sesiSudahAda = await db.select({ id: sesi.id }).from(sesi).where(eq(sesi.kelasId, id));
+    if (sesiSudahAda.length === 0) {
+      const feeUtama = daftarFee.find((f) => (f.trainerId ?? null) === row.trainerId);
+      const target = feeUtama?.skema === "paket" ? Number(feeUtama.targetSesi) : NaN;
+      if (Number.isFinite(target) && target > 0) {
+        await db.insert(sesi).values(
+          Array.from({ length: target }, (_, i) => ({
+            kelasId: id,
+            pertemuanKe: i + 1,
+            status: "belum" as const,
+          }))
+        );
+      }
+    }
+  }
+
   return NextResponse.json(row);
 }
 
