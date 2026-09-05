@@ -79,21 +79,21 @@ export async function PATCH(
   return NextResponse.json(row);
 }
 
-// PUT /api/payslip/[id] { sesiIds: string[], periode?: "YYYY-MM" }
-// Ganti seluruh set sesi payslip yang masih draft (buat tombol "Edit"
-// sebelum Finalisasi diklik). Cuma boleh selagi draft - begitu udah
-// difinalisasi, harus dibalikin ke draft dulu (PATCH status) baru bisa diedit.
+// PUT /api/payslip/[id]
+//   Tipe "trainer": { sesiIds: string[], periode?: "YYYY-MM" }
+//     Ganti seluruh set sesi payslip yang masih draft.
+//   Tipe "karyawan": { nominal: number, periode?: "YYYY-MM" }
+//     Ganti nominal fee-nya - gak ada sesi buat tipe ini.
+// Buat tombol "Edit" sebelum Finalisasi diklik. Cuma boleh selagi draft -
+// begitu udah difinalisasi, harus dibalikin ke draft dulu (PATCH status)
+// baru bisa diedit.
 export async function PUT(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
   const body = await req.json();
-  const { sesiIds } = body;
 
-  if (!Array.isArray(sesiIds) || sesiIds.length === 0) {
-    return NextResponse.json({ error: "sesiIds (minimal 1) wajib diisi" }, { status: 400 });
-  }
   if (body.periode !== undefined && !/^\d{4}-\d{2}$/.test(body.periode)) {
     return NextResponse.json(
       { error: "periode harus format YYYY-MM, mis. 2026-08" },
@@ -108,6 +108,26 @@ export async function PUT(
       { error: "Payslip cuma bisa diedit selagi masih draft. Balikin ke draft dulu." },
       { status: 409 }
     );
+  }
+
+  if (existing.tipe === "karyawan") {
+    if (body.nominal === undefined || Number(body.nominal) <= 0) {
+      return NextResponse.json({ error: "nominal harus lebih dari 0" }, { status: 400 });
+    }
+    const [row] = await db
+      .update(payslip)
+      .set({
+        nominal: Number(body.nominal),
+        ...(body.periode !== undefined && { periode: body.periode }),
+      })
+      .where(eq(payslip.id, id))
+      .returning();
+    return NextResponse.json(row);
+  }
+
+  const { sesiIds } = body;
+  if (!Array.isArray(sesiIds) || sesiIds.length === 0) {
+    return NextResponse.json({ error: "sesiIds (minimal 1) wajib diisi" }, { status: 400 });
   }
 
   // Validasi sama kayak POST: sesi harus ada & "selesai", dan belum

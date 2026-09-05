@@ -18,6 +18,19 @@ export const trainer = sqliteTable("trainer", {
   createdAt: text("created_at").default(sql`(current_timestamp)`),
 });
 
+// Karyawan non-trainer (marketing, admin, dst) - orang yang gak ngajar
+// kelas, jadi gak punya sesi/feeRule. Fee-nya diisi manual tiap kali bikin
+// payslip (lihat payslip.tipe === "karyawan"), bukan dihitung dari sesi.
+export const karyawan = sqliteTable("karyawan", {
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  nama: text("nama").notNull(),
+  posisi: text("posisi").notNull(), // mis. "Marketing", "Admin", "Finance"
+  bankName: text("bank_name"),
+  bankAccountNumber: text("bank_account_number"),
+  bankAccountName: text("bank_account_name"),
+  createdAt: text("created_at").default(sql`(current_timestamp)`),
+});
+
 export const kelas = sqliteTable("kelas", {
   id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   nama: text("nama").notNull(),
@@ -120,12 +133,25 @@ export const payment = sqliteTable("payment", {
   createdAt: text("created_at").default(sql`(current_timestamp)`),
 });
 
-// Payslip: kumpulan sesi selesai yang direkap jadi tagihan fee 1 trainer
-// buat 1 periode (bulan). Header di sini, item-nya (sesi mana aja yang
-// masuk) ada di payslipItem.
+// Payslip: tagihan fee 1 periode (bulan) buat 1 orang - trainer ATAU
+// karyawan non-trainer, dibedain lewat `tipe`.
+//
+//   tipe "trainer"  - trainerId notNull, karyawanId null. Isinya rekapan
+//                     sesi selesai (lihat payslipItem), totalFee dihitung
+//                     dari situ. nominal null, gak dipakai.
+//   tipe "karyawan" - karyawanId notNull, trainerId null. Karyawan
+//                     non-trainer (marketing, admin, dst) gak punya sesi
+//                     buat direkap, jadi fee-nya diisi manual ke `nominal`
+//                     tiap kali bikin payslip - gak ada payslipItem sama
+//                     sekali buat tipe ini.
 export const payslip = sqliteTable("payslip", {
   id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
-  trainerId: text("trainer_id").notNull().references(() => trainer.id),
+  tipe: text("tipe").notNull().default("trainer"), // trainer | karyawan
+  trainerId: text("trainer_id").references(() => trainer.id),
+  karyawanId: text("karyawan_id").references(() => karyawan.id),
+  // Nominal fee manual - cuma dipakai buat tipe "karyawan" (fee trainer
+  // tetap dihitung dari payslipItem, biar snapshot rate per sesi gak ilang).
+  nominal: real("nominal"),
   periode: text("periode").notNull(), // "YYYY-MM" - periode payroll, BUKAN tanggal sesi
   // Alur linear: draft (masih bisa ubah sesi) -> belum_dibayar (udah
   // dikunci, siap dibayar) -> lunas (duit udah keluar).

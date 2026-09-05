@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { initials, avatarClass, formatRupiah, BULAN, BULAN_LABEL, currentYear } from "@/lib/ui";
 
 type Trainer = { id: string; nama: string };
+type Karyawan = { id: string; nama: string; posisi: string };
 type Kelas = {
   id: string;
   nama: string;
@@ -29,8 +30,15 @@ type SesiDetail = {
 
 type Payslip = {
   id: string;
-  trainerId: string;
-  trainerNama: string;
+  // "trainer" (default) = direkap dari sesi. "karyawan" = non-trainer
+  // (marketing, admin, dst), fee-nya nominal manual, gak ada sesi.
+  tipe: "trainer" | "karyawan";
+  trainerId: string | null;
+  trainerNama: string | null;
+  karyawanId: string | null;
+  karyawanNama: string | null;
+  karyawanPosisi: string | null;
+  nominal: number | null;
   periode: string;
   status: string;
   createdAt: string;
@@ -66,6 +74,7 @@ const STATUS_STYLE: Record<string, string> = {
 export default function PayslipPage() {
   const [payslips, setPayslips] = useState<Payslip[]>([]);
   const [trainers, setTrainers] = useState<Trainer[]>([]);
+  const [karyawanList, setKaryawanList] = useState<Karyawan[]>([]);
   const [kelasList, setKelasList] = useState<Kelas[]>([]);
   const [statusFilter, setStatusFilter] = useState("all");
   // Filter periode buat analytics & list - "all" = semua periode.
@@ -73,8 +82,13 @@ export default function PayslipPage() {
   const [loading, setLoading] = useState(true);
 
   const [wizardOpen, setWizardOpen] = useState(false);
-  const [step, setStep] = useState<1 | 2 | 3>(1);
+  // "trainer" = alur lama (pilih trainer -> kelas -> sesi). "karyawan" =
+  // non-trainer, langsung isi nominal - gak ada kelas/sesi buat direkap.
+  const [wTipe, setWTipe] = useState<"trainer" | "karyawan">("trainer");
+  const [step, setStep] = useState<0 | 1 | 2 | 3>(0);
   const [wTrainerId, setWTrainerId] = useState("");
+  const [wKaryawanId, setWKaryawanId] = useState("");
+  const [wNominal, setWNominal] = useState("");
   const [wKelasId, setWKelasId] = useState("");
   const [wSesiDetail, setWSesiDetail] = useState<SesiDetail[]>([]);
   const [wSesiLoading, setWSesiLoading] = useState(false);
@@ -103,13 +117,15 @@ export default function PayslipPage() {
 
   async function load() {
     setLoading(true);
-    const [p, t, k] = await Promise.all([
+    const [p, t, kw, k] = await Promise.all([
       fetch("/api/payslip").then((r) => r.json()),
       fetch("/api/trainer").then((r) => r.json()),
+      fetch("/api/karyawan").then((r) => r.json()),
       fetch("/api/kelas").then((r) => r.json()),
     ]);
     setPayslips(p);
     setTrainers(t);
+    setKaryawanList(kw);
     setKelasList(k);
     setLoading(false);
   }
@@ -119,9 +135,12 @@ export default function PayslipPage() {
   }, []);
 
   function openWizard() {
-    setStep(1);
+    setStep(0);
+    setWTipe("trainer");
     setWEditingId(null);
     setWTrainerId("");
+    setWKaryawanId("");
+    setWNominal("");
     setWKelasId("");
     setWSesiDetail([]);
     setWChecked(new Set());
@@ -133,22 +152,36 @@ export default function PayslipPage() {
     setWizardOpen(true);
   }
 
-  // Buka wizard buat edit payslip draft yang udah ada - trainer, kelas,
-  // periode, dan sesi yang udah dicentang di-prefill dari payslip itu.
+  function chooseTipe(tipe: "trainer" | "karyawan") {
+    setWTipe(tipe);
+    setStep(1);
+  }
+
+  // Buka wizard buat edit payslip draft yang udah ada - field-nya di-prefill
+  // dari payslip itu, beda alur tergantung tipe-nya.
   async function openEditWizard(p: Payslip) {
-    const kelasId = p.sesi[0]?.kelasId ?? "";
     setWEditingId(p.id);
-    setWTrainerId(p.trainerId);
-    setWKelasId(kelasId);
+    setWTipe(p.tipe);
     setWRangeInput("");
     setWRangeMsg(null);
     const [bulan, tahun] = [p.periode.split("-")[1], p.periode.split("-")[0]];
     setWBulan(bulan);
     setWTahun(tahun);
     setWMsg(null);
+    setWizardOpen(true);
+
+    if (p.tipe === "karyawan") {
+      setWKaryawanId(p.karyawanId ?? "");
+      setWNominal(p.nominal != null ? String(p.nominal) : "");
+      setStep(3);
+      return;
+    }
+
+    const kelasId = p.sesi[0]?.kelasId ?? "";
+    setWTrainerId(p.trainerId ?? "");
+    setWKelasId(kelasId);
     setWSesiLoading(true);
     setStep(3);
-    setWizardOpen(true);
     const data = await fetch(`/api/fee/detail?trainerId=${p.trainerId}`).then((r) => r.json());
     const sesiKelas = (data.sesi ?? []).filter((s: SesiDetail) => s.kelasId === kelasId);
     setWSesiDetail(sesiKelas);
@@ -162,11 +195,24 @@ export default function PayslipPage() {
     setWizardOpen(false);
   }
 
+  /** Nama & id buat ditampilin - trainer atau karyawan tergantung tipe payslip-nya. */
+  function namaPayslip(p: Payslip) {
+    return p.tipe === "karyawan" ? (p.karyawanNama ?? "-") : (p.trainerNama ?? "-");
+  }
+  function idPayslip(p: Payslip) {
+    return p.tipe === "karyawan" ? (p.karyawanId as string) : (p.trainerId as string);
+  }
+
   async function pickTrainer(trainerId: string) {
     setWTrainerId(trainerId);
     setWKelasId("");
     setWChecked(new Set());
     setStep(2);
+  }
+
+  function pickKaryawan(karyawanId: string) {
+    setWKaryawanId(karyawanId);
+    setStep(3);
   }
 
   async function pickKelas(kelasId: string) {
@@ -273,6 +319,38 @@ export default function PayslipPage() {
     .reduce((sum, s) => sum + s.ratePerSesi, 0);
 
   async function simpanPayslip() {
+    if (wTipe === "karyawan") {
+      if (!wKaryawanId || !wNominal || Number(wNominal) <= 0) return;
+      setWCreating(true);
+      setWMsg(null);
+      const res = wEditingId
+        ? await fetch(`/api/payslip/${wEditingId}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ periode: wPeriode, nominal: Number(wNominal) }),
+          })
+        : await fetch("/api/payslip", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              tipe: "karyawan",
+              karyawanId: wKaryawanId,
+              periode: wPeriode,
+              nominal: Number(wNominal),
+            }),
+          });
+      const data = await res.json();
+      if (!res.ok) {
+        setWMsg(`Gagal: ${data.error}`);
+        setWCreating(false);
+        return;
+      }
+      setWCreating(false);
+      setWizardOpen(false);
+      load();
+      return;
+    }
+
     if (wChecked.size === 0) return;
     setWCreating(true);
     setWMsg(null);
@@ -411,6 +489,7 @@ export default function PayslipPage() {
       (k.trainers ?? []).some((t) => t.trainerId === wTrainerId)
   );
   const wTrainerNama = trainers.find((t) => t.id === wTrainerId)?.nama ?? "";
+  const wKaryawanNama = karyawanList.find((k) => k.id === wKaryawanId)?.nama ?? "";
   const wKelasNama = kelasList.find((k) => k.id === wKelasId)?.nama ?? "";
 
   // Periode yang beneran ada payslip-nya, terbaru dulu - buat dropdown filter.
@@ -451,23 +530,26 @@ export default function PayslipPage() {
       .sort((a, b) => b.hariTertunggak - a.hariTertunggak);
     const tunggakanTerlama = tunggakan[0] ?? null;
 
-    // Breakdown per trainer: lunas vs belum dibayar, diurutin dari total
-    // terbesar biar yang paling perlu perhatian ada di atas.
+    // Breakdown per orang (trainer maupun karyawan): lunas vs belum dibayar,
+    // diurutin dari total terbesar biar yang paling perlu perhatian ada di
+    // atas. Key-nya trainerId ATAU karyawanId, tergantung tipe payslip-nya.
     const perTrainerMap = new Map<
       string,
       { trainerId: string; trainerNama: string; lunas: number; belumDibayar: number }
     >();
     for (const p of periodePayslips) {
       if (p.status === "draft") continue; // draft belum final, gak masuk breakdown
-      const row = perTrainerMap.get(p.trainerId) ?? {
-        trainerId: p.trainerId,
-        trainerNama: p.trainerNama,
+      const key = p.tipe === "karyawan" ? (p.karyawanId as string) : (p.trainerId as string);
+      const nama = p.tipe === "karyawan" ? (p.karyawanNama as string) : (p.trainerNama as string);
+      const row = perTrainerMap.get(key) ?? {
+        trainerId: key,
+        trainerNama: nama,
         lunas: 0,
         belumDibayar: 0,
       };
       if (p.status === "lunas") row.lunas += p.totalFee;
       else row.belumDibayar += p.totalFee;
-      perTrainerMap.set(p.trainerId, row);
+      perTrainerMap.set(key, row);
     }
     const perTrainer = Array.from(perTrainerMap.values()).sort(
       (a, b) => b.lunas + b.belumDibayar - (a.lunas + a.belumDibayar)
@@ -506,7 +588,7 @@ export default function PayslipPage() {
         <button
           type="button"
           onClick={openWizard}
-          disabled={!trainers.length}
+          disabled={!trainers.length && !karyawanList.length}
           className="flex items-center justify-center gap-2 whitespace-nowrap rounded-lg bg-primary px-6 py-2.5 font-geist text-label-md text-on-primary shadow-sm transition-colors hover:bg-primary-container disabled:opacity-50"
         >
           <span className="material-symbols-outlined text-[18px]">add</span>
@@ -570,7 +652,7 @@ export default function PayslipPage() {
           {analytics.tunggakanTerlama ? (
             <>
               <p className="mt-1 truncate font-geist text-headline-sm text-error">
-                {analytics.tunggakanTerlama.trainerNama}
+                {namaPayslip(analytics.tunggakanTerlama)}
               </p>
               <p className="mt-1 font-inter text-label-sm text-text-muted">
                 {analytics.tunggakanTerlama.hariTertunggak} hari &middot;{" "}
@@ -588,7 +670,7 @@ export default function PayslipPage() {
         <div className="grid grid-cols-1 gap-stack-md lg:grid-cols-2">
           {analytics.perTrainer.length > 0 && (
             <div className="rounded-xl border border-outline-variant bg-surface-container-lowest p-5">
-              <h2 className="mb-4 font-geist text-label-lg text-primary">Per Trainer</h2>
+              <h2 className="mb-4 font-geist text-label-lg text-primary">Per Orang</h2>
               <div className="flex flex-col gap-3">
                 {analytics.perTrainer.map((row) => {
                   const total = row.lunas + row.belumDibayar;
@@ -752,14 +834,19 @@ export default function PayslipPage() {
             <div className="flex items-start gap-4">
               <div
                 className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-sm font-bold ${avatarClass(
-                  p.trainerId
+                  idPayslip(p)
                 )}`}
               >
-                {initials(p.trainerNama)}
+                {initials(namaPayslip(p))}
               </div>
               <div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="font-geist text-headline-sm text-primary">{p.trainerNama}</h3>
+                  <h3 className="font-geist text-headline-sm text-primary">{namaPayslip(p)}</h3>
+                  {p.tipe === "karyawan" && (
+                    <span className="inline-flex items-center rounded-full bg-surface-container px-2.5 py-1 font-geist text-label-sm text-on-surface-variant">
+                      {p.karyawanPosisi}
+                    </span>
+                  )}
                   <span
                     className={`inline-flex items-center rounded-full px-2.5 py-1 font-geist text-label-sm ${STATUS_STYLE[p.status]}`}
                   >
@@ -768,11 +855,14 @@ export default function PayslipPage() {
                 </div>
                 <p className="mt-1 font-inter text-body-sm text-text-muted">
                   Periode {BULAN_LABEL[p.periode.split("-")[1]] ?? p.periode.split("-")[1]}{" "}
-                  {p.periode.split("-")[0]} · {p.jumlahSesi} sesi
+                  {p.periode.split("-")[0]}
+                  {p.tipe === "trainer" && ` · ${p.jumlahSesi} sesi`}
                 </p>
-                <p className="mt-1 font-inter text-body-sm text-text-muted">
-                  {Array.from(new Set(p.sesi.map((s) => s.kelasNama))).join(", ")}
-                </p>
+                {p.tipe === "trainer" && (
+                  <p className="mt-1 font-inter text-body-sm text-text-muted">
+                    {Array.from(new Set(p.sesi.map((s) => s.kelasNama))).join(", ")}
+                  </p>
+                )}
               </div>
             </div>
 
@@ -864,16 +954,90 @@ export default function PayslipPage() {
 
             {/* Step indicator */}
             <div className="flex items-center gap-2 border-b border-outline-variant/60 px-6 py-3 font-geist text-label-sm text-text-muted">
-              <span className={step >= 1 ? "text-primary" : ""}>1. Trainer</span>
+              <span className={step >= 0 ? "text-primary" : ""}>1. Tipe</span>
               <span className="material-symbols-outlined text-[14px]">chevron_right</span>
-              <span className={step >= 2 ? "text-primary" : ""}>2. Kelas</span>
+              <span className={step >= 1 ? "text-primary" : ""}>
+                2. {wTipe === "karyawan" ? "Karyawan" : "Trainer"}
+              </span>
+              {wTipe === "trainer" && (
+                <>
+                  <span className="material-symbols-outlined text-[14px]">chevron_right</span>
+                  <span className={step >= 2 ? "text-primary" : ""}>3. Kelas</span>
+                </>
+              )}
               <span className="material-symbols-outlined text-[14px]">chevron_right</span>
-              <span className={step >= 3 ? "text-primary" : ""}>3. Sesi & Periode</span>
+              <span className={step >= 3 ? "text-primary" : ""}>
+                {wTipe === "karyawan" ? "4. Nominal & Periode" : "4. Sesi & Periode"}
+              </span>
             </div>
 
             <div className="flex-1 overflow-y-auto p-6">
-              {/* Step 1: pilih trainer */}
-              {step === 1 && (
+              {/* Step 0: pilih tipe payslip */}
+              {step === 0 && (
+                <div className="flex flex-col gap-3">
+                  <button
+                    onClick={() => chooseTipe("trainer")}
+                    className="flex items-center justify-between rounded-lg border border-outline-variant px-4 py-4 text-left transition-colors hover:border-primary hover:bg-neutral-light-bg"
+                  >
+                    <div>
+                      <p className="font-geist text-label-md text-primary">Trainer</p>
+                      <p className="mt-0.5 font-inter text-body-sm text-text-muted">
+                        Direkap dari sesi kelas yang udah selesai diajar.
+                      </p>
+                    </div>
+                    <span className="material-symbols-outlined text-[18px] text-outline">
+                      chevron_right
+                    </span>
+                  </button>
+                  <button
+                    onClick={() => chooseTipe("karyawan")}
+                    disabled={!karyawanList.length}
+                    className="flex items-center justify-between rounded-lg border border-outline-variant px-4 py-4 text-left transition-colors hover:border-primary hover:bg-neutral-light-bg disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <div>
+                      <p className="font-geist text-label-md text-primary">
+                        Karyawan (non-trainer)
+                      </p>
+                      <p className="mt-0.5 font-inter text-body-sm text-text-muted">
+                        {karyawanList.length
+                          ? "Marketing, admin, dst - fee diisi manual per bulan."
+                          : "Belum ada data karyawan. Tambah dulu di halaman Karyawan."}
+                      </p>
+                    </div>
+                    <span className="material-symbols-outlined text-[18px] text-outline">
+                      chevron_right
+                    </span>
+                  </button>
+                </div>
+              )}
+
+              {/* Step 1: pilih trainer atau karyawan */}
+              {step === 1 && wTipe === "karyawan" && (
+                <div className="flex flex-col gap-2">
+                  {karyawanList.map((k) => (
+                    <button
+                      key={k.id}
+                      onClick={() => pickKaryawan(k.id)}
+                      className="flex items-center gap-3 rounded-lg border border-outline-variant px-4 py-3 text-left transition-colors hover:border-primary hover:bg-neutral-light-bg"
+                    >
+                      <div
+                        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-bold ${avatarClass(
+                          k.id
+                        )}`}
+                      >
+                        {initials(k.nama)}
+                      </div>
+                      <span className="flex flex-col">
+                        <span className="font-inter text-body-sm text-primary">{k.nama}</span>
+                        <span className="font-inter text-label-sm text-text-muted">
+                          {k.posisi}
+                        </span>
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+              {step === 1 && wTipe === "trainer" && (
                 <div className="flex flex-col gap-2">
                   {trainers.map((t) => (
                     <button
@@ -926,8 +1090,67 @@ export default function PayslipPage() {
                 </div>
               )}
 
-              {/* Step 3: centang sesi + pilih periode */}
-              {step === 3 && (
+              {/* Step 3 (karyawan): nominal fee + periode manual */}
+              {step === 3 && wTipe === "karyawan" && (
+                <div className="flex flex-col gap-4">
+                  <button
+                    onClick={() => setStep(1)}
+                    className="flex w-fit items-center gap-1 font-geist text-label-sm text-text-muted hover:text-primary"
+                  >
+                    <span className="material-symbols-outlined text-[16px]">arrow_back</span>
+                    Ganti karyawan ({wKaryawanNama})
+                  </button>
+
+                  <div className="flex flex-col gap-1.5">
+                    <label htmlFor="w-nominal" className="font-geist text-label-sm text-text-muted">
+                      Nominal fee (Rp)
+                    </label>
+                    <input
+                      id="w-nominal"
+                      type="number"
+                      className={inputClass}
+                      placeholder="3000000"
+                      value={wNominal}
+                      onChange={(e) => setWNominal(e.target.value)}
+                    />
+                  </div>
+
+                  <div className="flex flex-col gap-2">
+                    <span className="font-geist text-label-sm text-text-muted">
+                      Periode payslip (bulan fee ini)
+                    </span>
+                    <div className="flex gap-2">
+                      <select
+                        className={inputClass}
+                        value={wBulan}
+                        onChange={(e) => setWBulan(e.target.value)}
+                      >
+                        {BULAN.map((b) => (
+                          <option key={b} value={b}>
+                            {BULAN_LABEL[b]}
+                          </option>
+                        ))}
+                      </select>
+                      <select
+                        className={inputClass}
+                        value={wTahun}
+                        onChange={(e) => setWTahun(e.target.value)}
+                      >
+                        {[currentYear() - 1, currentYear(), currentYear() + 1].map((y) => (
+                          <option key={y} value={y}>
+                            {y}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  {wMsg && <p className="font-inter text-body-sm text-error">{wMsg}</p>}
+                </div>
+              )}
+
+              {/* Step 3 (trainer): centang sesi + pilih periode */}
+              {step === 3 && wTipe === "trainer" && (
                 <div className="flex flex-col gap-4">
                   <button
                     onClick={() => setStep(2)}
@@ -1082,7 +1305,25 @@ export default function PayslipPage() {
               )}
             </div>
 
-            {step === 3 && (
+            {step === 3 && wTipe === "karyawan" && (
+              <div className="flex items-center justify-between border-t border-outline-variant px-6 py-4">
+                <span className="font-inter text-body-sm text-text-muted">
+                  {wNominal && Number(wNominal) > 0
+                    ? `Nominal ${formatRupiah(Number(wNominal))}`
+                    : "Isi nominal fee dulu"}
+                </span>
+                <button
+                  onClick={simpanPayslip}
+                  disabled={wCreating || !wNominal || Number(wNominal) <= 0}
+                  className="flex items-center gap-2 rounded-lg bg-primary px-6 py-2.5 font-geist text-label-md text-on-primary shadow-sm transition-colors hover:bg-primary-container disabled:opacity-50"
+                >
+                  <span className="material-symbols-outlined text-[18px]">receipt_long</span>
+                  {wCreating ? "Menyimpan..." : wEditingId ? "Simpan Perubahan" : "Buat Payslip"}
+                </button>
+              </div>
+            )}
+
+            {step === 3 && wTipe === "trainer" && (
               <div className="flex items-center justify-between border-t border-outline-variant px-6 py-4">
                 <span className="font-inter text-body-sm text-text-muted">
                   {wChecked.size > 0
@@ -1109,7 +1350,7 @@ export default function PayslipPage() {
           <div className="flex max-h-[85vh] w-full max-w-xl flex-col overflow-hidden rounded-xl bg-surface-container-lowest shadow-lg">
             <div className="flex items-center justify-between border-b border-outline-variant px-6 py-4">
               <h2 className="font-geist text-headline-sm text-primary">
-                Export ke n8n &mdash; {exportPayslip.trainerNama}
+                Export ke n8n &mdash; {namaPayslip(exportPayslip)}
               </h2>
               <button
                 onClick={() => setExportPayslip(null)}
@@ -1184,7 +1425,8 @@ export default function PayslipPage() {
                       </p>
                       <p>
                         <strong className="text-on-surface-variant">Nama:</strong>{" "}
-                        {exportRows.nama} ({exportRows.email})
+                        {exportRows.nama}
+                        {exportRows.email ? ` (${exportRows.email})` : ""}
                       </p>
                       <p>
                         <strong className="text-on-surface-variant">Bank:</strong>{" "}

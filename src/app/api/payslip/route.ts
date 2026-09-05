@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
-import { payslip, payslipItem, sesi, kelas, trainer } from "@/db/schema";
+import { payslip, payslipItem, sesi, kelas, trainer, karyawan } from "@/db/schema";
 import { eq, inArray } from "drizzle-orm";
 import { hitungRatePerSesi } from "@/lib/feeQuery";
 
 // GET /api/payslip?trainerId=...&periode=2026-08 (keduanya opsional filter)
-// Balikin payslip beserta ringkasan jumlah sesi & total fee-nya.
+// Balikin payslip beserta ringkasan jumlah sesi & total fee-nya. Payslip
+// tipe "karyawan" gak punya sesi - totalFee-nya langsung dari `nominal`.
 export async function GET(req: NextRequest) {
   const trainerId = req.nextUrl.searchParams.get("trainerId");
   const periode = req.nextUrl.searchParams.get("periode");
@@ -13,8 +14,13 @@ export async function GET(req: NextRequest) {
   let rows = await db
     .select({
       id: payslip.id,
+      tipe: payslip.tipe,
       trainerId: payslip.trainerId,
       trainerNama: trainer.nama,
+      karyawanId: payslip.karyawanId,
+      karyawanNama: karyawan.nama,
+      karyawanPosisi: karyawan.posisi,
+      nominal: payslip.nominal,
       periode: payslip.periode,
       status: payslip.status,
       catatan: payslip.catatan,
@@ -23,7 +29,8 @@ export async function GET(req: NextRequest) {
       jadwalPembayaran: payslip.jadwalPembayaran,
     })
     .from(payslip)
-    .leftJoin(trainer, eq(payslip.trainerId, trainer.id));
+    .leftJoin(trainer, eq(payslip.trainerId, trainer.id))
+    .leftJoin(karyawan, eq(payslip.karyawanId, karyawan.id));
 
   if (trainerId) rows = rows.filter((r) => r.trainerId === trainerId);
   if (periode) rows = rows.filter((r) => r.periode === periode);
@@ -42,6 +49,14 @@ export async function GET(req: NextRequest) {
     .leftJoin(kelas, eq(sesi.kelasId, kelas.id));
 
   const result = rows.map((r) => {
+    if (r.tipe === "karyawan") {
+      return {
+        ...r,
+        jumlahSesi: 0,
+        totalFee: r.nominal ?? 0,
+        sesi: [],
+      };
+    }
     const rowItems = items.filter((i) => i.payslipId === r.id);
     return {
       ...r,
@@ -60,13 +75,50 @@ export async function GET(req: NextRequest) {
   return NextResponse.json(result);
 }
 
-// POST /api/payslip { trainerId, periode: "YYYY-MM", sesiIds: string[] }
-// Bikin payslip draft dari sesi-sesi yang dicentang di wizard halaman Payslip
-// (alur: pilih trainer -> pilih kelas -> centang sesi -> pilih periode).
-// Rate per sesi di-snapshot dari feeRule kelas masing-masing sesi saat ini -
-// kalau rate kelas berubah belakangan, payslip yang udah dibuat nggak ikut berubah.
+// POST /api/payslip
+//   Tipe "trainer" (default): { trainerId, periode: "YYYY-MM", sesiIds: string[] }
+//     Bikin payslip draft dari sesi-sesi yang dicentang di wizard halaman
+//     Payslip (alur: pilih trainer -> pilih kelas -> centang sesi -> pilih
+//     periode). Rate per sesi di-snapshot dari feeRule kelas masing-masing
+//     sesi saat ini - kalau rate kelas berubah belakangan, payslip yang
+//     udah dibuat nggak ikut berubah.
+//   Tipe "karyawan": { tipe: "karyawan", karyawanId, periode, nominal }
+//     Karyawan non-trainer (marketing, admin, dst) gak ngajar sesi, jadi
+//     fee-nya diisi manual - gak ada payslipItem sama sekali buat tipe ini.
 export async function POST(req: NextRequest) {
   const body = await req.json();
+
+  if (body.tipe === "karyawan") {
+    const { karyawanId, periode, nominal } = body;
+    if (!karyawanId || !periode || nominal === undefined || nominal === null) {
+      return NextResponse.json(
+        { error: "karyawanId, periode, dan nominal wajib diisi" },
+        { status: 400 }
+      );
+    }
+    if (!/^\d{4}-\d{2}$/.test(periode)) {
+      return NextResponse.json(
+        { error: "periode harus format YYYY-MM, mis. 2026-08" },
+        { status: 400 }
+      );
+    }
+    if (Number(nominal) <= 0) {
+      return NextResponse.json({ error: "nominal harus lebih dari 0" }, { status: 400 });
+    }
+
+    const [row] = await db
+      .insert(payslip)
+      .values({
+        tipe: "karyawan",
+        karyawanId,
+        periode,
+        nominal: Number(nominal),
+        catatan: body.catatan ?? null,
+      })
+      .returning();
+    return NextResponse.json(row, { status: 201 });
+  }
+
   const { trainerId, periode, sesiIds } = body;
 
   if (!trainerId || !periode || !Array.isArray(sesiIds) || sesiIds.length === 0) {
