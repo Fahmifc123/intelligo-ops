@@ -62,7 +62,7 @@ export async function GET(
     if (kurangKaryawan.length > 0) {
       return NextResponse.json(
         {
-          error: `Data belum lengkap buat export: ${kurangKaryawan.join(", ")}. Lengkapi dulu di halaman Karyawan${
+          error: `Data belum lengkap buat export: ${kurangKaryawan.join(", ")}. Lengkapi dulu di halaman Trainer${
             !p.jadwalPembayaran ? " atau isi jadwal pembayaran di payslip ini" : ""
           }.`,
         },

@@ -998,7 +998,7 @@ export default function PayslipPage() {
                       <p className="mt-0.5 font-inter text-body-sm text-text-muted">
                         {karyawanList.length
                           ? "Marketing, admin, dst - fee diisi manual per bulan."
-                          : "Belum ada data karyawan. Tambah dulu di halaman Karyawan."}
+                          : "Belum ada data karyawan. Tambah dulu di halaman Trainer."}
                       </p>
                     </div>
                     <span className="material-symbols-outlined text-[18px] text-outline">

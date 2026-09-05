@@ -5,6 +5,8 @@ import { initials, avatarClass } from "@/lib/ui";
 type Trainer = {
   id: string;
   nama: string;
+  tipe: "trainer" | "karyawan";
+  posisi: string | null;
   email: string | null;
   bankName: string | null;
   bankAccountNumber: string | null;
@@ -17,6 +19,11 @@ const inputClass =
 export default function TrainerPage() {
   const [trainers, setTrainers] = useState<Trainer[]>([]);
   const [nama, setNama] = useState("");
+  // Trainer beneran (ngajar kelas) vs karyawan non-trainer (marketing,
+  // admin, dst) - satu tabel, dibedain kolom tipe. Karyawan butuh posisi,
+  // gak butuh email (email cuma dipakai buat sync rekening trainer).
+  const [tipe, setTipe] = useState<"trainer" | "karyawan">("trainer");
+  const [posisi, setPosisi] = useState("");
   const [email, setEmail] = useState("");
   const [bankName, setBankName] = useState("");
   const [bankAccountNumber, setBankAccountNumber] = useState("");
@@ -32,6 +39,9 @@ export default function TrainerPage() {
 
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
+  // Filter tampilan - "all" default, atau cuma trainer / cuma karyawan.
+  const [filterTipe, setFilterTipe] = useState<"all" | "trainer" | "karyawan">("all");
+
   // Sync data rekening dari Google Form pendaftaran trainer.
   const [showSync, setShowSync] = useState(false);
   const [syncLink, setSyncLink] = useState("");
@@ -39,7 +49,7 @@ export default function TrainerPage() {
   const [syncMsg, setSyncMsg] = useState<string | null>(null);
 
   async function load() {
-    const res = await fetch("/api/trainer");
+    const res = await fetch("/api/trainer?tipe=all");
     setTrainers(await res.json());
   }
 
@@ -50,6 +60,7 @@ export default function TrainerPage() {
   async function addTrainer(e: React.FormEvent) {
     e.preventDefault();
     if (!nama.trim()) return;
+    if (tipe === "karyawan" && !posisi.trim()) return;
     setLoading(true);
     setFormMsg(null);
     try {
@@ -58,6 +69,8 @@ export default function TrainerPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           nama,
+          tipe,
+          posisi: tipe === "karyawan" ? posisi : undefined,
           email: email || undefined,
           bankName: bankName || undefined,
           bankAccountNumber: bankAccountNumber || undefined,
@@ -66,11 +79,13 @@ export default function TrainerPage() {
       });
       const data = await res.json();
       if (!res.ok) {
-        setFormMsg(`Gagal: ${data.error ?? "trainer gagal ditambahkan"}`);
+        setFormMsg(`Gagal: ${data.error ?? "data gagal ditambahkan"}`);
         setLoading(false);
         return;
       }
       setNama("");
+      setTipe("trainer");
+      setPosisi("");
       setEmail("");
       setBankName("");
       setBankAccountNumber("");
@@ -87,6 +102,7 @@ export default function TrainerPage() {
     setEditId(t.id);
     setEditDraft({
       nama: t.nama,
+      posisi: t.posisi ?? "",
       email: t.email ?? "",
       bankName: t.bankName ?? "",
       bankAccountNumber: t.bankAccountNumber ?? "",
@@ -110,12 +126,13 @@ export default function TrainerPage() {
   }
 
   async function deleteTrainer(t: Trainer) {
-    if (!window.confirm(`Hapus trainer "${t.nama}"? Tindakan ini gak bisa dibatalin.`)) return;
+    const label = t.tipe === "karyawan" ? "karyawan" : "trainer";
+    if (!window.confirm(`Hapus ${label} "${t.nama}"? Tindakan ini gak bisa dibatalin.`)) return;
     setDeletingId(t.id);
     const res = await fetch(`/api/trainer/${t.id}`, { method: "DELETE" });
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
-      window.alert(data.error ?? "Gagal hapus trainer.");
+      window.alert(data.error ?? `Gagal hapus ${label}.`);
     }
     setDeletingId(null);
     load();
@@ -149,16 +166,21 @@ export default function TrainerPage() {
     setSyncing(false);
   }
 
+  const visibleTrainers = trainers.filter(
+    (t) => filterTipe === "all" || t.tipe === filterTipe
+  );
+
   return (
     <div className="flex flex-col gap-stack-lg">
       {/* Header */}
       <div className="flex flex-col items-start justify-between gap-4 md:flex-row md:items-end">
         <div>
           <h1 className="mb-2 font-geist text-headline-lg-mobile text-primary md:text-headline-lg">
-            Trainer Management
+            Trainer & Karyawan
           </h1>
           <p className="font-inter text-body-md text-text-muted">
-            Kelola data trainer yang mengajar di kelas Intelligo.
+            Kelola data trainer yang mengajar di kelas, maupun karyawan non-trainer
+            (marketing, admin, dst) buat keperluan payslip.
           </p>
         </div>
         <div className="flex w-full gap-3 md:w-auto">
@@ -178,7 +200,7 @@ export default function TrainerPage() {
             <span className="material-symbols-outlined text-[18px]">
               {showForm ? "close" : "add"}
             </span>
-            {showForm ? "Tutup" : "Add Trainer"}
+            {showForm ? "Tutup" : "Add Data"}
           </button>
         </div>
       </div>
@@ -218,46 +240,93 @@ export default function TrainerPage() {
         </div>
       )}
 
-      {/* Form tambah trainer */}
+      {/* Form tambah trainer/karyawan */}
       {showForm && (
         <form
           onSubmit={addTrainer}
           className="flex flex-col gap-stack-md rounded-xl border border-outline-variant bg-surface-container-lowest p-6"
         >
-          <h2 className="font-geist text-headline-sm text-primary">
-            Tambah Trainer Baru
-          </h2>
+          <h2 className="font-geist text-headline-sm text-primary">Tambah Data Baru</h2>
+
+          <div className="flex flex-col gap-1.5">
+            <span className="font-geist text-label-sm text-text-muted">Tipe</span>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setTipe("trainer")}
+                className={
+                  tipe === "trainer"
+                    ? "rounded-lg bg-primary px-4 py-2 font-geist text-label-sm text-on-primary"
+                    : "rounded-lg border border-outline-variant bg-surface px-4 py-2 font-geist text-label-sm text-on-surface-variant transition-colors hover:bg-surface-container"
+                }
+              >
+                Trainer
+              </button>
+              <button
+                type="button"
+                onClick={() => setTipe("karyawan")}
+                className={
+                  tipe === "karyawan"
+                    ? "rounded-lg bg-primary px-4 py-2 font-geist text-label-sm text-on-primary"
+                    : "rounded-lg border border-outline-variant bg-surface px-4 py-2 font-geist text-label-sm text-on-surface-variant transition-colors hover:bg-surface-container"
+                }
+              >
+                Karyawan (non-trainer)
+              </button>
+            </div>
+          </div>
+
           <div className="grid grid-cols-1 gap-stack-md md:grid-cols-2">
             <div className="flex flex-col gap-1.5">
               <label
                 htmlFor="trainer-nama"
                 className="font-geist text-label-sm text-text-muted"
               >
-                Nama trainer
+                Nama {tipe === "karyawan" ? "karyawan" : "trainer"}
               </label>
               <input
                 id="trainer-nama"
                 className={inputClass}
-                placeholder="Nama trainer"
+                placeholder={tipe === "karyawan" ? "Nama karyawan" : "Nama trainer"}
                 value={nama}
                 onChange={(e) => setNama(e.target.value)}
               />
             </div>
-            <div className="flex flex-col gap-1.5">
-              <label
-                htmlFor="trainer-email"
-                className="font-geist text-label-sm text-text-muted"
-              >
-                Email (dipakai buat sync rekening)
-              </label>
-              <input
-                id="trainer-email"
-                className={inputClass}
-                placeholder="nama@intelligo.id"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-              />
-            </div>
+
+            {tipe === "karyawan" ? (
+              <div className="flex flex-col gap-1.5">
+                <label
+                  htmlFor="trainer-posisi"
+                  className="font-geist text-label-sm text-text-muted"
+                >
+                  Posisi
+                </label>
+                <input
+                  id="trainer-posisi"
+                  className={inputClass}
+                  placeholder="mis. Marketing, Admin, Finance"
+                  value={posisi}
+                  onChange={(e) => setPosisi(e.target.value)}
+                />
+              </div>
+            ) : (
+              <div className="flex flex-col gap-1.5">
+                <label
+                  htmlFor="trainer-email"
+                  className="font-geist text-label-sm text-text-muted"
+                >
+                  Email (dipakai buat sync rekening)
+                </label>
+                <input
+                  id="trainer-email"
+                  className={inputClass}
+                  placeholder="nama@intelligo.id"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                />
+              </div>
+            )}
+
             <div className="flex flex-col gap-1.5">
               <label
                 htmlFor="trainer-bank"
@@ -293,7 +362,7 @@ export default function TrainerPage() {
                 htmlFor="trainer-pemilik"
                 className="font-geist text-label-sm text-text-muted"
               >
-                Nama pemilik rekening (opsional - kalau beda dari nama trainer)
+                Nama pemilik rekening (opsional - kalau beda dari nama di atas)
               </label>
               <input
                 id="trainer-pemilik"
@@ -321,30 +390,54 @@ export default function TrainerPage() {
         </form>
       )}
 
-      {/* Tabel trainer */}
+      {/* Filter tipe */}
+      <div className="flex flex-wrap gap-2">
+        {[
+          { key: "all" as const, label: "Semua" },
+          { key: "trainer" as const, label: "Trainer" },
+          { key: "karyawan" as const, label: "Karyawan" },
+        ].map((opt) => (
+          <button
+            key={opt.key}
+            type="button"
+            onClick={() => setFilterTipe(opt.key)}
+            className={
+              filterTipe === opt.key
+                ? "rounded-lg bg-primary px-4 py-2 font-geist text-label-sm text-on-primary"
+                : "rounded-lg border border-outline-variant bg-surface px-4 py-2 font-geist text-label-sm text-on-surface-variant transition-colors hover:bg-surface-container"
+            }
+          >
+            {opt.label}
+            {opt.key !== "all" &&
+              ` (${trainers.filter((t) => t.tipe === opt.key).length})`}
+          </button>
+        ))}
+      </div>
+
+      {/* Tabel trainer & karyawan */}
       <div className="flex flex-col overflow-hidden rounded-xl border border-outline-variant bg-surface-container-lowest shadow-sm">
         <div className="w-full overflow-x-auto">
           <table className="w-full border-collapse text-left">
             <thead>
               <tr className="border-b border-outline-variant bg-surface-container-low/50 font-geist text-label-md text-text-muted">
                 <th className="p-4 pl-6">Name</th>
-                <th className="p-4">Contact</th>
+                <th className="p-4">Posisi / Contact</th>
                 <th className="p-4">Rekening</th>
                 <th className="p-4 pr-6 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="font-inter text-body-sm">
-              {trainers.length === 0 && (
+              {visibleTrainers.length === 0 && (
                 <tr>
                   <td
                     colSpan={4}
                     className="p-6 text-center font-inter text-body-sm text-text-muted"
                   >
-                    Belum ada trainer.
+                    Belum ada data.
                   </td>
                 </tr>
               )}
-              {trainers.map((t) =>
+              {visibleTrainers.map((t) =>
                 editId === t.id ? (
                   <tr key={t.id} className="border-b border-outline-variant/50 bg-surface-container-low/40">
                     <td className="p-3 pl-6" colSpan={4}>
@@ -356,12 +449,21 @@ export default function TrainerPage() {
                             value={editDraft.nama ?? ""}
                             onChange={(e) => setEditDraft((d) => ({ ...d, nama: e.target.value }))}
                           />
-                          <input
-                            className={inputClass}
-                            placeholder="Email"
-                            value={editDraft.email ?? ""}
-                            onChange={(e) => setEditDraft((d) => ({ ...d, email: e.target.value }))}
-                          />
+                          {t.tipe === "karyawan" ? (
+                            <input
+                              className={inputClass}
+                              placeholder="Posisi"
+                              value={editDraft.posisi ?? ""}
+                              onChange={(e) => setEditDraft((d) => ({ ...d, posisi: e.target.value }))}
+                            />
+                          ) : (
+                            <input
+                              className={inputClass}
+                              placeholder="Email"
+                              value={editDraft.email ?? ""}
+                              onChange={(e) => setEditDraft((d) => ({ ...d, email: e.target.value }))}
+                            />
+                          )}
                           <input
                             className={inputClass}
                             placeholder="Nama bank"
@@ -420,14 +522,23 @@ export default function TrainerPage() {
                           {initials(t.nama)}
                         </div>
                         <div>
-                          <div className="font-medium text-primary">{t.nama}</div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium text-primary">{t.nama}</span>
+                            {t.tipe === "karyawan" && (
+                              <span className="rounded-full bg-surface-container px-2 py-0.5 font-geist text-label-sm text-on-surface-variant">
+                                Karyawan
+                              </span>
+                            )}
+                          </div>
                           <div className="font-inter text-label-sm text-text-muted">
                             ID: {t.id.slice(0, 8)}
                           </div>
                         </div>
                       </div>
                     </td>
-                    <td className="p-4 text-text-muted">{t.email ?? "-"}</td>
+                    <td className="p-4 text-text-muted">
+                      {t.tipe === "karyawan" ? t.posisi ?? "-" : t.email ?? "-"}
+                    </td>
                     <td className="p-4 text-text-muted">
                       {t.bankName ? (
                         <div className="flex flex-col">
@@ -446,7 +557,7 @@ export default function TrainerPage() {
                         <button
                           type="button"
                           onClick={() => startEdit(t)}
-                          aria-label={`Edit trainer ${t.nama}`}
+                          aria-label={`Edit ${t.nama}`}
                           className="rounded p-1.5 text-text-muted transition-colors hover:bg-surface-container hover:text-primary"
                         >
                           <span className="material-symbols-outlined text-[20px]">edit</span>
@@ -455,7 +566,7 @@ export default function TrainerPage() {
                           type="button"
                           onClick={() => deleteTrainer(t)}
                           disabled={deletingId === t.id}
-                          aria-label={`Hapus trainer ${t.nama}`}
+                          aria-label={`Hapus ${t.nama}`}
                           className="rounded p-1.5 text-text-muted transition-colors hover:bg-error-container hover:text-error disabled:opacity-50"
                         >
                           <span className="material-symbols-outlined text-[20px]">
@@ -474,7 +585,7 @@ export default function TrainerPage() {
         {/* Footer tabel */}
         <div className="flex flex-col items-start justify-between gap-3 border-t border-outline-variant bg-surface-container-lowest px-6 py-4 text-sm sm:flex-row sm:items-center">
           <span className="font-inter text-body-sm text-text-muted">
-            Menampilkan {trainers.length} trainer
+            Menampilkan {visibleTrainers.length} dari {trainers.length} data
           </span>
         </div>
       </div>
