@@ -25,6 +25,7 @@ export async function GET(req: NextRequest) {
       createdAt: payslip.createdAt,
       finalizedAt: payslip.finalizedAt,
       jadwalPembayaran: payslip.jadwalPembayaran,
+      dikirimAt: payslip.dikirimAt,
     })
     .from(payslip)
     .leftJoin(trainer, eq(payslip.trainerId, trainer.id));

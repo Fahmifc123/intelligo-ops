@@ -13,10 +13,16 @@ import { decryptSessionToken, SESSION_COOKIE_NAME } from "@/lib/session";
  * butuh data user yang lebih detail.
  */
 
+// /api/n8n/* dipanggil server n8n (gak punya cookie login) - tiap route di
+// bawahnya wajib cek Bearer N8N_SECRET sendiri (lihat lib/n8n.ts).
 const PUBLIC_PATHS = ["/login", "/api/auth/login"];
+const PUBLIC_PREFIXES = ["/api/n8n/"];
 
 function isPublicPath(pathname: string): boolean {
-  return PUBLIC_PATHS.some((p) => pathname === p);
+  return (
+    PUBLIC_PATHS.some((p) => pathname === p) ||
+    PUBLIC_PREFIXES.some((p) => pathname.startsWith(p))
+  );
 }
 
 export default async function proxy(req: NextRequest) {

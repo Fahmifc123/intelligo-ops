@@ -28,6 +28,25 @@ type SesiDetail = {
   payslipStatus: string | null;
 };
 
+type Pengiriman = {
+  id: string;
+  trainerNama: string;
+  email: string | null;
+  periode: string;
+  payslipIds: string[];
+  status: "menunggu" | "sukses" | "gagal";
+  error: string | null;
+  createdAt: string;
+  completedAt: string | null;
+};
+
+function formatWaktu(iso: string | null): string {
+  if (!iso) return "-";
+  // SQLite current_timestamp = "YYYY-MM-DD HH:MM:SS" (UTC, tanpa zona).
+  const d = new Date(iso.includes("T") ? iso : iso.replace(" ", "T") + "Z");
+  return d.toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short" });
+}
+
 type Payslip = {
   id: string;
   // "trainer" (default) = direkap dari sesi. "karyawan" = non-trainer
@@ -47,6 +66,8 @@ type Payslip = {
   // Tanggal estimasi transfer, "YYYY-MM-DD" - diisi manual, dipakai
   // sebagai kolom "jadwal_pembayaran" pas export ke format n8n.
   jadwalPembayaran: string | null;
+  // Kapan n8n konfirmasi payslip ini berhasil dikirim (callback). Null = belum.
+  dikirimAt: string | null;
   jumlahSesi: number;
   totalFee: number;
   sesi: {
@@ -123,9 +144,12 @@ export default function PayslipPage() {
   } | null>(null);
   const [exportJadwal, setExportJadwal] = useState("");
   const [exportSaving, setExportSaving] = useState(false);
-  const [exportRows, setExportRows] = useState<Record<string, string> | null>(null);
+  const [exportSent, setExportSent] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
-  const [exportCopied, setExportCopied] = useState(false);
+  // Filter pengiriman (hasil callback n8n) + riwayat pengiriman.
+  const [kirimFilter, setKirimFilter] = useState<"all" | "sudah" | "belum">("all");
+  const [pengirimanList, setPengirimanList] = useState<Pengiriman[]>([]);
+  const [showRiwayat, setShowRiwayat] = useState(false);
 
   // Centang beberapa payslip (trainer/karyawan yang sama) buat digabung
   // jadi satu baris export n8n - lihat tombol "Export Gabungan" di list.
@@ -133,12 +157,14 @@ export default function PayslipPage() {
 
   async function load() {
     setLoading(true);
-    const [p, t, kw, k] = await Promise.all([
+    const [p, t, kw, k, pg] = await Promise.all([
       fetch("/api/payslip").then((r) => r.json()),
       fetch("/api/trainer").then((r) => r.json()),
       fetch("/api/trainer?tipe=karyawan").then((r) => r.json()),
       fetch("/api/kelas").then((r) => r.json()),
+      fetch("/api/payslip/pengiriman").then((r) => r.json()),
     ]);
+    setPengirimanList(Array.isArray(pg) ? pg : []);
     setPayslips(p);
     setTrainers(t);
     setKaryawanList(kw);
@@ -431,9 +457,8 @@ export default function PayslipPage() {
   function openExport(p: Payslip) {
     setExportTarget({ ids: [p.id], label: namaPayslip(p), jadwalPembayaran: p.jadwalPembayaran });
     setExportJadwal(p.jadwalPembayaran ?? "");
-    setExportRows(null);
+    setExportSent(false);
     setExportError(null);
-    setExportCopied(false);
   }
 
   function toggleExportSelection(id: string) {
@@ -455,107 +480,38 @@ export default function PayslipPage() {
       jadwalPembayaran: null,
     });
     setExportJadwal("");
-    setExportRows(null);
+    setExportSent(false);
     setExportError(null);
-    setExportCopied(false);
   }
 
-  /** Simpan jadwal pembayaran ke semua payslip yang lagi di-export, lalu ambil baris export siap tempel. */
-  async function generateExport() {
+  /**
+   * Kirim payslip ke webhook n8n lewat server. Status payslip BELUM berubah
+   * di sini - baru naik ke "terkirim" setelah n8n manggil callback sukses
+   * (workflow selesai kirim email), jadi riwayat/filter mencerminkan
+   * pengiriman yang beneran terjadi.
+   */
+  async function kirimKeN8n() {
     if (!exportTarget) return;
     setExportSaving(true);
     setExportError(null);
     try {
-      if (exportJadwal) {
-        const hasil = await Promise.all(
-          exportTarget.ids.map((id) =>
-            fetch(`/api/payslip/${id}`, {
-              method: "PATCH",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ jadwalPembayaran: exportJadwal }),
-            })
-          )
-        );
-        const gagal = hasil.find((r) => !r.ok);
-        if (gagal) {
-          const d = await gagal.json();
-          setExportError(d.error ?? "Gagal simpan jadwal pembayaran");
-          setExportSaving(false);
-          return;
-        }
-      }
-
-      const res = await fetch(`/api/payslip/export-n8n?ids=${exportTarget.ids.join(",")}`);
+      const res = await fetch("/api/payslip/send-n8n", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: exportTarget.ids, jadwalPembayaran: exportJadwal }),
+      });
       const data = await res.json();
       if (!res.ok) {
-        setExportError(data.error ?? "Gagal generate export");
+        setExportError(data.error ?? "Gagal mengirim ke n8n");
       } else {
-        setExportRows(data);
-        // Baris export ini yang bakal ditempel ke sheet trigger n8n buat
-        // ngirim email/WA ke trainer - begitu berhasil digenerate, payslip
-        // yang masih "belum_dibayar" otomatis naik ke "terkirim" biar
-        // "Tandai Lunas" cuma bisa diklik setelah ini (nunggu tim transfer).
-        const perluDitandai = exportTarget.ids.filter((id) => {
-          const p = payslips.find((row) => row.id === id);
-          return p?.status === "belum_dibayar";
-        });
-        if (perluDitandai.length > 0) {
-          await Promise.all(
-            perluDitandai.map((id) =>
-              fetch(`/api/payslip/${id}`, {
-                method: "PATCH",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ status: "terkirim" }),
-              })
-            )
-          );
-        }
-        load(); // refresh biar jadwalPembayaran & status ke-update di list
+        setExportSent(true);
+        setExportSelection(new Set());
       }
+      load(); // riwayat selalu ikut ke-refresh, termasuk kalau gagal
     } catch (e) {
       setExportError(e instanceof Error ? e.message : String(e));
     }
     setExportSaving(false);
-  }
-
-  /**
-   * Bungkus nilai pakai tanda kutip kalau isinya ada tab/newline/kutip -
-   * aturan quoting TSV/CSV standar yang Google Sheets paham pas paste.
-   * items_json server udah dikirim satu baris (gak ada newline), tapi ini
-   * lapisan pengaman kedua kalau suatu saat ada field lain yang kebawa
-   * karakter aneh (mis. nama trainer yang ada tab-nya).
-   */
-  function tsvCell(v: string): string {
-    if (/[\t\n"]/.test(v)) return `"${v.replace(/"/g, '""')}"`;
-    return v;
-  }
-
-  /** Satu baris TSV, urutan kolom persis sesuai sheet trigger n8n. */
-  function exportTsvRow(r: Record<string, string>): string {
-    return [
-      r.periode,
-      r.jadwal_pembayaran,
-      r.nama,
-      r.email,
-      r.bank,
-      r.nomor_rekening,
-      r.nama_pemilik_rekening,
-      r.items_json,
-    ]
-      .map(tsvCell)
-      .join("\t");
-  }
-
-  async function copyExportRow() {
-    if (!exportRows) return;
-    try {
-      await navigator.clipboard.writeText(exportTsvRow(exportRows));
-      setExportCopied(true);
-      setTimeout(() => setExportCopied(false), 1500);
-    } catch {
-      // Clipboard API bisa ditolak browser - baris tetap kelihatan di
-      // textarea, admin bisa select-all manual.
-    }
   }
 
   // Kelas trainer ini = dia trainer utama ATAU dia salah satu trainer
@@ -588,8 +544,15 @@ export default function PayslipPage() {
   );
 
   const visiblePayslips = useMemo(
-    () => periodePayslips.filter((p) => statusFilter === "all" || p.status === statusFilter),
-    [periodePayslips, statusFilter]
+    () =>
+      periodePayslips
+        .filter((p) => statusFilter === "all" || p.status === statusFilter)
+        .filter(
+          (p) =>
+            kirimFilter === "all" ||
+            (kirimFilter === "sudah" ? p.dikirimAt !== null : p.dikirimAt === null)
+        ),
+    [periodePayslips, statusFilter, kirimFilter]
   );
 
   // --- Analytics, dihitung dari periodePayslips (udah discope filter periode) ---
@@ -900,6 +863,80 @@ export default function PayslipPage() {
         ))}
       </div>
 
+      {/* Filter pengiriman (hasil callback n8n) + toggle riwayat */}
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="font-geist text-label-sm text-text-muted">Pengiriman:</span>
+        {(
+          [
+            { key: "all", label: "Semua" },
+            { key: "sudah", label: "Sudah dikirim" },
+            { key: "belum", label: "Belum dikirim" },
+          ] as const
+        ).map((opt) => (
+          <button
+            key={opt.key}
+            type="button"
+            onClick={() => setKirimFilter(opt.key)}
+            className={
+              kirimFilter === opt.key
+                ? "rounded-lg bg-primary px-4 py-2 font-geist text-label-sm text-on-primary"
+                : "rounded-lg border border-outline-variant bg-surface px-4 py-2 font-geist text-label-sm text-on-surface-variant transition-colors hover:bg-surface-container"
+            }
+          >
+            {opt.label}
+          </button>
+        ))}
+        <button
+          type="button"
+          onClick={() => setShowRiwayat((v) => !v)}
+          className="ml-auto flex items-center gap-1.5 rounded-lg border border-outline-variant bg-surface px-4 py-2 font-geist text-label-sm text-on-surface-variant transition-colors hover:bg-surface-container"
+        >
+          <span className="material-symbols-outlined text-[16px]">history</span>
+          Riwayat Pengiriman ({pengirimanList.length})
+        </button>
+      </div>
+
+      {showRiwayat && (
+        <div className="overflow-hidden rounded-xl border border-outline-variant bg-surface-container-lowest">
+          {pengirimanList.length === 0 ? (
+            <p className="p-5 font-inter text-body-sm text-text-muted">
+              Belum ada pengiriman payslip lewat n8n.
+            </p>
+          ) : (
+            <div className="flex flex-col divide-y divide-outline-variant/60">
+              {pengirimanList.map((g) => (
+                <div key={g.id} className="flex flex-wrap items-center justify-between gap-3 px-5 py-3">
+                  <div className="min-w-0">
+                    <p className="font-inter text-body-sm text-on-surface-variant">
+                      {g.trainerNama} &middot; {g.periode}
+                      {g.payslipIds.length > 1 && ` (${g.payslipIds.length} payslip)`}
+                    </p>
+                    <p className="font-inter text-label-sm text-text-muted">
+                      {g.email ?? "-"} &middot; dikirim {formatWaktu(g.createdAt)}
+                      {g.status === "sukses" && ` · terkonfirmasi ${formatWaktu(g.completedAt)}`}
+                    </p>
+                    {g.status === "gagal" && g.error && (
+                      <p className="font-inter text-label-sm text-error">{g.error}</p>
+                    )}
+                  </div>
+                  <span
+                    className={`rounded-full px-2.5 py-1 font-geist text-label-sm ${
+                      g.status === "sukses"
+                        ? "bg-success/10 text-success"
+                        : g.status === "gagal"
+                          ? "bg-error-container/40 text-on-error-container"
+                          : "bg-warning/10 text-warning"
+                    }`}
+                  >
+                    {g.status === "sukses" ? "Terkirim" : g.status === "gagal" ? "Gagal" : "Menunggu n8n"}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Bar aksi gabungan - muncul begitu ada payslip yang dicentang buat export gabungan */}
       {exportSelection.size > 0 && (() => {
         const dipilih = payslips.filter((p) => exportSelection.has(p.id));
@@ -931,7 +968,7 @@ export default function PayslipPage() {
                 className="flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 font-geist text-label-sm text-on-primary transition-colors hover:bg-primary-container disabled:opacity-50"
               >
                 <span className="material-symbols-outlined text-[16px]">output</span>
-                Export Gabungan
+                Kirim Gabungan
               </button>
             </div>
           </div>
@@ -989,6 +1026,15 @@ export default function PayslipPage() {
                   >
                     {STATUS_LABEL[p.status] ?? p.status}
                   </span>
+                  {p.dikirimAt && (
+                    <span
+                      title="Konfirmasi dari n8n bahwa payslip sudah terkirim"
+                      className="inline-flex items-center gap-1 rounded-full bg-success/10 px-2.5 py-1 font-geist text-label-sm text-success"
+                    >
+                      <span className="material-symbols-outlined text-[14px]">mark_email_read</span>
+                      Terkirim {formatWaktu(p.dikirimAt)}
+                    </span>
+                  )}
                 </div>
                 <p className="mt-1 font-inter text-body-sm text-text-muted">
                   Periode {BULAN_LABEL[p.periode.split("-")[1]] ?? p.periode.split("-")[1]}{" "}
@@ -1042,11 +1088,11 @@ export default function PayslipPage() {
                 {p.status === "belum_dibayar" && (
                   <>
                     <span
-                      title="Export dulu (email/WA ke trainer) sebelum bisa ditandai lunas"
+                      title="Kirim dulu ke trainer lewat n8n sebelum bisa ditandai lunas"
                       className="flex items-center gap-1.5 self-center font-inter text-label-sm text-text-muted"
                     >
                       <span className="material-symbols-outlined text-[16px]">info</span>
-                      Belum di-export
+                      Belum dikirim
                     </span>
                     <button
                       onClick={() => ubahStatus(p.id, "draft")}
@@ -1080,11 +1126,11 @@ export default function PayslipPage() {
                   p.status === "lunas") && (
                   <button
                     onClick={() => openExport(p)}
-                    title="Generate baris siap tempel ke sheet trigger n8n - otomatis nandain payslip ini 'terkirim'"
+                    title="Kirim payslip ke trainer lewat n8n - status naik ke 'terkirim' setelah n8n konfirmasi"
                     className="flex items-center gap-1.5 rounded-lg border border-outline-variant px-4 py-2 font-geist text-label-sm text-on-surface-variant transition-colors hover:bg-surface-container"
                   >
                     <span className="material-symbols-outlined text-[16px]">output</span>
-                    Export n8n
+                    {p.dikirimAt ? "Kirim ulang" : "Kirim ke n8n"}
                   </button>
                 )}
               </div>
@@ -1536,7 +1582,7 @@ export default function PayslipPage() {
           <div className="flex max-h-[85vh] w-full max-w-xl flex-col overflow-hidden rounded-xl bg-surface-container-lowest shadow-lg">
             <div className="flex items-center justify-between border-b border-outline-variant px-6 py-4">
               <h2 className="font-geist text-headline-sm text-primary">
-                Export ke n8n &mdash; {exportTarget.label}
+                Kirim ke n8n &mdash; {exportTarget.label}
                 {exportTarget.ids.length > 1 && ` (${exportTarget.ids.length} payslip digabung)`}
               </h2>
               <button
@@ -1567,11 +1613,11 @@ export default function PayslipPage() {
 
                 <button
                   type="button"
-                  onClick={generateExport}
-                  disabled={exportSaving || !exportJadwal}
+                  onClick={kirimKeN8n}
+                  disabled={exportSaving || !exportJadwal || exportSent}
                   className="self-start rounded-lg bg-primary px-5 py-2 font-geist text-label-md text-on-primary transition-colors hover:bg-primary-container disabled:opacity-50"
                 >
-                  {exportSaving ? "Menyiapkan..." : "Generate baris export"}
+                  {exportSaving ? "Mengirim..." : "Kirim ke n8n"}
                 </button>
 
                 {exportError && (
@@ -1580,48 +1626,11 @@ export default function PayslipPage() {
                   </p>
                 )}
 
-                {exportRows && (
-                  <div className="flex flex-col gap-stack-sm">
-                    <p className="font-inter text-body-sm text-text-muted">
-                      Satu baris, kolom dipisah tab &mdash; tempel langsung ke baris baru di
-                      Google Sheet trigger n8n-mu (Ctrl+V di kolom pertama, bukan &quot;Paste
-                      special&quot;).
-                    </p>
-                    <textarea
-                      readOnly
-                      value={exportTsvRow(exportRows)}
-                      onClick={(e) => e.currentTarget.select()}
-                      rows={4}
-                      className="w-full resize-none rounded-lg border border-outline-variant bg-surface px-3 py-2 font-inter text-label-sm text-on-surface-variant"
-                    />
-                    <button
-                      type="button"
-                      onClick={copyExportRow}
-                      className="flex items-center justify-center gap-2 self-start rounded-lg border border-outline-variant bg-surface-container-low px-5 py-2 font-geist text-label-md text-primary transition-colors hover:bg-surface-container"
-                    >
-                      <span className="material-symbols-outlined text-[18px]">
-                        {exportCopied ? "check" : "content_copy"}
-                      </span>
-                      {exportCopied ? "Disalin" : "Copy baris"}
-                    </button>
-
-                    <div className="mt-2 rounded-lg border border-outline-variant bg-surface-container-low p-3 font-inter text-label-sm text-text-muted">
-                      <p>
-                        <strong className="text-on-surface-variant">Periode:</strong>{" "}
-                        {exportRows.periode}
-                      </p>
-                      <p>
-                        <strong className="text-on-surface-variant">Nama:</strong>{" "}
-                        {exportRows.nama}
-                        {exportRows.email ? ` (${exportRows.email})` : ""}
-                      </p>
-                      <p>
-                        <strong className="text-on-surface-variant">Bank:</strong>{" "}
-                        {exportRows.bank} &middot; {exportRows.nomor_rekening} a.n{" "}
-                        {exportRows.nama_pemilik_rekening}
-                      </p>
-                    </div>
-                  </div>
+                {exportSent && (
+                  <p className="rounded-lg border border-success/30 bg-success/10 p-3 font-inter text-body-sm text-success">
+                    Payslip dikirim ke n8n. Status berubah jadi &quot;Menunggu Transfer&quot; dan
+                    tercatat di Riwayat Pengiriman setelah n8n selesai mengirim email.
+                  </p>
                 )}
               </div>
             </div>

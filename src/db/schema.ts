@@ -159,6 +159,10 @@ export const payslip = sqliteTable("payslip", {
   // sebagai kolom "jadwal_pembayaran" pas export ke format n8n. Null
   // sampai admin isi (lihat /api/payslip/[id]/export-n8n).
   jadwalPembayaran: text("jadwal_pembayaran"),
+  // Kapan n8n terakhir konfirmasi payslip ini berhasil dikirim ke
+  // trainer/karyawan (callback sukses, lihat payslipPengiriman). Null =
+  // belum pernah terkirim. Dipakai buat filter "sudah/belum dikirim".
+  dikirimAt: text("dikirim_at"),
 });
 
 // Baris penghubung payslip <-> sesi. `ratePerSesi` di-snapshot di sini
@@ -172,4 +176,23 @@ export const payslipItem = sqliteTable("payslip_item", {
   sesiId: text("sesi_id").notNull().references(() => sesi.id),
   ratePerSesi: real("rate_per_sesi").notNull(),
   createdAt: text("created_at").default(sql`(current_timestamp)`),
+});
+
+
+// Riwayat pengiriman payslip lewat n8n. Satu baris = satu kali tombol
+// "Kirim ke n8n" diklik (bisa mencakup beberapa payslip trainer yang sama
+// yang digabung). Dibuat "menunggu" saat webhook n8n dipanggil, lalu
+// diupdate "sukses"/"gagal" lewat callback dari n8n di akhir workflow.
+export const payslipPengiriman = sqliteTable("payslip_pengiriman", {
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  trainerId: text("trainer_id").notNull().references(() => trainer.id),
+  // Snapshot biar riwayat tetap terbaca walau trainer diubah/dihapus.
+  trainerNama: text("trainer_nama").notNull(),
+  email: text("email"),
+  periode: text("periode").notNull(), // label, mis. "Agustus 2026"
+  payslipIds: text("payslip_ids").notNull(), // JSON array id payslip
+  status: text("status").notNull().default("menunggu"), // menunggu | sukses | gagal
+  error: text("error"),
+  createdAt: text("created_at").default(sql`(current_timestamp)`),
+  completedAt: text("completed_at"),
 });
