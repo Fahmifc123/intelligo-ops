@@ -86,6 +86,7 @@ export default function KelasPage() {
   const [loading, setLoading] = useState(false);
   const [syncingId, setSyncingId] = useState<string | null>(null);
   const [syncMsg, setSyncMsg] = useState<string | null>(null);
+  const [syncingAll, setSyncingAll] = useState(false);
   const [preview, setPreview] = useState<PreviewResult | null>(null);
   // Mapping kolom manual: { pertemuan: 1, trainer: 11, ... }. Dipakai kalau
   // auto-detect gagal, atau kalau admin mau override hasil deteksi.
@@ -440,6 +441,38 @@ export default function KelasPage() {
     load();
   }
 
+  // Sync semua kelas yang punya sheet Navigator sekaligus.
+  async function syncAll() {
+    if (!confirm("Sync semua kelas dari sheet Navigator? Ini bisa makan waktu beberapa saat.")) return;
+    setSyncingAll(true);
+    setSyncMsg(null);
+    try {
+      const res = await fetch("/api/sync/navigator", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) {
+        setSyncMsg(`Gagal: ${data.error}`);
+      } else {
+        const hasil = data as {
+          kelasNama: string;
+          inserted: number;
+          updated: number;
+          errors: string[];
+        }[];
+        const baru = hasil.reduce((a, r) => a + r.inserted, 0);
+        const upd = hasil.reduce((a, r) => a + r.updated, 0);
+        const gagal = hasil.filter((r) => r.errors?.length > 0);
+        setSyncMsg(
+          `Sync semua kelas selesai: ${hasil.length} kelas, ${baru} sesi baru, ${upd} diupdate.` +
+            (gagal.length ? ` ${gagal.length} kelas ada error: ${gagal.map((r) => r.kelasNama).join(", ")}.` : "")
+        );
+      }
+    } catch (e) {
+      setSyncMsg(`Gagal: ${e instanceof Error ? e.message : String(e)}`);
+    }
+    setSyncingAll(false);
+    load();
+  }
+
   const inputClass =
     "w-full rounded-lg border border-outline-variant bg-surface px-3 py-2 font-inter text-body-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-primary";
 
@@ -464,6 +497,17 @@ export default function KelasPage() {
           </p>
         </div>
         <div className="flex w-full gap-3 md:w-auto">
+          <button
+            type="button"
+            onClick={syncAll}
+            disabled={syncingAll || syncingId !== null}
+            className="flex flex-1 items-center justify-center gap-2 whitespace-nowrap rounded-lg border border-outline-variant bg-surface-container-lowest px-5 py-2.5 font-geist text-label-md text-on-surface-variant transition-colors hover:bg-surface-container disabled:cursor-not-allowed disabled:opacity-50 md:flex-none"
+          >
+            <span className={`material-symbols-outlined text-[18px] ${syncingAll ? "animate-spin" : ""}`}>
+              sync
+            </span>
+            {syncingAll ? "Syncing..." : "Sync All Class"}
+          </button>
           <button
             type="button"
             onClick={() => setShowFilter((v) => !v)}
@@ -1191,7 +1235,7 @@ export default function KelasPage() {
                 {k.navigatorSheetId ? (
                   <button
                     onClick={() => syncNow(k.id)}
-                    disabled={syncingId === k.id}
+                    disabled={syncingId === k.id || syncingAll}
                     className="flex w-full items-center justify-center gap-2 rounded-lg border border-outline-variant bg-surface-container-low px-4 py-2 font-geist text-label-sm text-primary transition-colors hover:bg-surface-container disabled:opacity-50"
                   >
                     <span className="material-symbols-outlined text-[16px]">sync</span>
