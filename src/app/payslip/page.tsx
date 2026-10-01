@@ -145,6 +145,8 @@ export default function PayslipPage() {
   const [exportJadwal, setExportJadwal] = useState("");
   const [exportSaving, setExportSaving] = useState(false);
   const [exportSent, setExportSent] = useState(false);
+  const [testEmail, setTestEmail] = useState("");
+  const [testMsg, setTestMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
   // Filter pengiriman (hasil callback n8n) + riwayat pengiriman.
   const [kirimFilter, setKirimFilter] = useState<"all" | "sudah" | "belum">("all");
@@ -458,6 +460,7 @@ export default function PayslipPage() {
     setExportTarget({ ids: [p.id], label: namaPayslip(p), jadwalPembayaran: p.jadwalPembayaran });
     setExportJadwal(p.jadwalPembayaran ?? "");
     setExportSent(false);
+    setTestMsg(null);
     setExportError(null);
   }
 
@@ -481,7 +484,35 @@ export default function PayslipPage() {
     });
     setExportJadwal("");
     setExportSent(false);
+    setTestMsg(null);
     setExportError(null);
+  }
+
+  /** Kirim tes ke email sendiri - gak nyatat riwayat & gak ngubah status payslip. */
+  async function kirimTes() {
+    if (!exportTarget) return;
+    setExportSaving(true);
+    setTestMsg(null);
+    try {
+      const res = await fetch("/api/payslip/send-n8n", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ids: exportTarget.ids,
+          jadwalPembayaran: exportJadwal,
+          testEmail,
+        }),
+      });
+      const data = await res.json();
+      setTestMsg(
+        res.ok
+          ? { ok: true, text: `Tes terkirim ke ${data.email}. Cek inbox (dan spam).` }
+          : { ok: false, text: data.error ?? "Gagal mengirim tes" }
+      );
+    } catch (e) {
+      setTestMsg({ ok: false, text: e instanceof Error ? e.message : String(e) });
+    }
+    setExportSaving(false);
   }
 
   /**
@@ -1619,6 +1650,35 @@ export default function PayslipPage() {
                 >
                   {exportSaving ? "Mengirim..." : "Kirim ke n8n"}
                 </button>
+
+                <div className="flex flex-col gap-1.5 rounded-lg border border-outline-variant bg-surface-container-low p-3">
+                  <label htmlFor="test-email" className="font-geist text-label-sm text-text-muted">
+                    Tes dulu ke email sendiri (gak dicatat, status payslip gak berubah)
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      id="test-email"
+                      type="email"
+                      placeholder="emailkamu@gmail.com"
+                      className={inputClass}
+                      value={testEmail}
+                      onChange={(e) => setTestEmail(e.target.value)}
+                    />
+                    <button
+                      type="button"
+                      onClick={kirimTes}
+                      disabled={exportSaving || !exportJadwal || !testEmail}
+                      className="whitespace-nowrap rounded-lg border border-outline-variant bg-surface px-4 py-2 font-geist text-label-sm text-primary transition-colors hover:bg-surface-container disabled:opacity-50"
+                    >
+                      {exportSaving ? "Mengirim..." : "Kirim tes"}
+                    </button>
+                  </div>
+                  {testMsg && (
+                    <p className={`font-inter text-label-sm ${testMsg.ok ? "text-success" : "text-error"}`}>
+                      {testMsg.text}
+                    </p>
+                  )}
+                </div>
 
                 {exportError && (
                   <p className="rounded-lg border border-error-container bg-error-container/40 p-3 font-inter text-body-sm text-on-error-container">

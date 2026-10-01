@@ -14,6 +14,8 @@ export const maxDuration = 60;
 // akhirnya lewat POST /api/n8n/payslip-callback - status payslip baru naik
 // ke "terkirim" setelah callback sukses, bukan pas webhook dipanggil.
 //
+// Body { testEmail } = kirim tes ke email itu (gak dicatat, status gak berubah).
+//
 // Mode sederhana (N8N_SECRET kosong): gak perlu callback. Set node Webhook
 // n8n ke "Respond: When Last Node Finishes" - balasan 2xx dianggap workflow
 // selesai (email terkirim), dan non-2xx/timeout dianggap gagal.
@@ -42,6 +44,39 @@ export async function POST(req: NextRequest) {
   const built = await buildExportPayload(ids);
   if (!built.ok) return NextResponse.json({ error: built.error }, { status: built.status });
   const { data } = built;
+
+  // Mode tes: kirim payload yang sama persis ke n8n tapi emailnya diganti
+  // ke alamat tes - TANPA catatan riwayat dan TANPA ngubah status payslip.
+  // Dipakai buat ngecek workflow n8n dari UI sebelum ngirim ke trainer.
+  if (body.testEmail !== undefined) {
+    const testEmail = String(body.testEmail).trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(testEmail)) {
+      return NextResponse.json({ error: "Email tes gak valid" }, { status: 400 });
+    }
+    try {
+      const res = await fetch(webhookUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(process.env.N8N_SECRET && { Authorization: `Bearer ${process.env.N8N_SECRET}` }),
+        },
+        body: JSON.stringify({
+          ...data,
+          email: testEmail,
+          items: JSON.parse(data.items_json),
+          test: true,
+        }),
+        signal: AbortSignal.timeout(55_000),
+      });
+      if (!res.ok) throw new Error(`Webhook n8n balas ${res.status}`);
+    } catch (e) {
+      return NextResponse.json(
+        { error: `Gagal memanggil n8n: ${e instanceof Error ? e.message : String(e)}` },
+        { status: 502 }
+      );
+    }
+    return NextResponse.json({ test: true, email: testEmail });
+  }
 
   const [pengiriman] = await db
     .insert(payslipPengiriman)
