@@ -27,6 +27,11 @@ if (existsSync(envPath)) {
 }
 
 const url = process.env.TURSO_DATABASE_URL;
+if (!url && process.argv.includes("--if-configured")) {
+  // Dipakai di `npm run build` - build tanpa Turso (mis. lokal) jalan terus.
+  console.log("TURSO_DATABASE_URL gak diset, migrasi dilewati.");
+  process.exit(0);
+}
 if (!url) {
   console.error(
     "TURSO_DATABASE_URL gak ketemu.\n" +
