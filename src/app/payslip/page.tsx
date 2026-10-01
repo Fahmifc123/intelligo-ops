@@ -1628,8 +1628,9 @@ export default function PayslipPage() {
 
                 {exportSent && (
                   <p className="rounded-lg border border-success/30 bg-success/10 p-3 font-inter text-body-sm text-success">
-                    Payslip dikirim ke n8n. Status berubah jadi &quot;Menunggu Transfer&quot; dan
-                    tercatat di Riwayat Pengiriman setelah n8n selesai mengirim email.
+                    Payslip dikirim ke n8n. Cek Riwayat Pengiriman &mdash; statusnya jadi
+                    &quot;Terkirim&quot; (dan payslip &quot;Menunggu Transfer&quot;) begitu n8n
+                    konfirmasi email sudah terkirim.
                   </p>
                 )}
               </div>
