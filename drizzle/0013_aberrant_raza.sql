@@ -1,0 +1,1 @@
+ALTER TABLE `payslip_pengiriman` ADD `metode` text DEFAULT 'n8n' NOT NULL;

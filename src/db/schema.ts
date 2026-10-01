@@ -192,6 +192,9 @@ export const payslipPengiriman = sqliteTable("payslip_pengiriman", {
   periode: text("periode").notNull(), // label, mis. "Agustus 2026"
   payslipIds: text("payslip_ids").notNull(), // JSON array id payslip
   status: text("status").notNull().default("menunggu"), // menunggu | sukses | gagal
+  // n8n = dikirim otomatis lewat webhook; manual = admin konfirmasi sudah
+  // dikirim sendiri di luar sistem (WA/email biasa).
+  metode: text("metode").notNull().default("n8n"), // n8n | manual
   error: text("error"),
   createdAt: text("created_at").default(sql`(current_timestamp)`),
   completedAt: text("completed_at"),

@@ -171,7 +171,7 @@ export async function buildExportPayload(ids: string[]): Promise<ExportResult> {
 }
 
 /** "2026-08" -> "Agustus 2026" */
-function periodeLabel(periode: string): string {
+export function periodeLabel(periode: string): string {
   const [tahun, bulan] = periode.split("-");
   return `${BULAN_LABEL[bulan] ?? bulan} ${tahun}`;
 }

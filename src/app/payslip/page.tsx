@@ -35,6 +35,7 @@ type Pengiriman = {
   periode: string;
   payslipIds: string[];
   status: "menunggu" | "sukses" | "gagal";
+  metode: "n8n" | "manual";
   error: string | null;
   createdAt: string;
   completedAt: string | null;
@@ -152,6 +153,12 @@ export default function PayslipPage() {
   const [kirimFilter, setKirimFilter] = useState<"all" | "sudah" | "belum">("all");
   const [pengirimanList, setPengirimanList] = useState<Pengiriman[]>([]);
   const [showRiwayat, setShowRiwayat] = useState(false);
+
+  // Konfirmasi manual: payslip dikirim/dibayar di luar n8n (WA, email biasa).
+  const [manualTarget, setManualTarget] = useState<Payslip | null>(null);
+  const [manualDibayar, setManualDibayar] = useState(false);
+  const [manualSaving, setManualSaving] = useState(false);
+  const [manualError, setManualError] = useState<string | null>(null);
 
   // Centang beberapa payslip (trainer/karyawan yang sama) buat digabung
   // jadi satu baris export n8n - lihat tombol "Export Gabungan" di list.
@@ -448,6 +455,29 @@ export default function PayslipPage() {
       body: JSON.stringify({ status }),
     });
     if (res.ok) load();
+  }
+
+  async function konfirmasiManual() {
+    if (!manualTarget) return;
+    setManualSaving(true);
+    setManualError(null);
+    try {
+      const res = await fetch(`/api/payslip/${manualTarget.id}/konfirmasi-manual`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dibayar: manualDibayar }),
+      });
+      if (res.ok) {
+        setManualTarget(null);
+        load();
+      } else {
+        const d = await res.json();
+        setManualError(d.error ?? "Gagal menyimpan konfirmasi");
+      }
+    } catch (e) {
+      setManualError(e instanceof Error ? e.message : String(e));
+    }
+    setManualSaving(false);
   }
 
   async function batalkan(id: string) {
@@ -940,6 +970,11 @@ export default function PayslipPage() {
                   <div className="min-w-0">
                     <p className="font-inter text-body-sm text-on-surface-variant">
                       {g.trainerNama} &middot; {g.periode}
+                      {g.metode === "manual" && (
+                        <span className="ml-2 rounded-full bg-surface-container px-2 py-0.5 font-geist text-label-sm text-on-surface-variant">
+                          Manual
+                        </span>
+                      )}
                       {g.payslipIds.length > 1 && ` (${g.payslipIds.length} payslip)`}
                     </p>
                     <p className="font-inter text-label-sm text-text-muted">
@@ -1131,6 +1166,18 @@ export default function PayslipPage() {
                       className="rounded-lg border border-outline-variant px-4 py-2 font-geist text-label-sm text-on-surface-variant transition-colors hover:bg-surface-container"
                     >
                       Batalkan Finalisasi
+                    </button>
+                    <button
+                      onClick={() => {
+                        setManualTarget(p);
+                        setManualDibayar(false);
+                        setManualError(null);
+                      }}
+                      title="Konfirmasi payslip ini sudah dikirim (dan/atau dibayar) secara manual, di luar n8n"
+                      className="flex items-center gap-1.5 rounded-lg border border-outline-variant px-4 py-2 font-geist text-label-sm text-on-surface-variant transition-colors hover:bg-surface-container"
+                    >
+                      <span className="material-symbols-outlined text-[16px]">task_alt</span>
+                      Konfirmasi Manual
                     </button>
                   </>
                 )}
@@ -1603,6 +1650,80 @@ export default function PayslipPage() {
                 </button>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Modal konfirmasi manual */}
+      {manualTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-on-surface/40 p-4">
+          <div className="flex w-full max-w-md flex-col overflow-hidden rounded-xl bg-surface-container-lowest shadow-lg">
+            <div className="flex items-center justify-between border-b border-outline-variant px-6 py-4">
+              <h2 className="font-geist text-headline-sm text-primary">Konfirmasi Manual</h2>
+              <button
+                onClick={() => setManualTarget(null)}
+                className="rounded-full p-1.5 text-text-muted transition-colors hover:bg-surface-container"
+              >
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
+            <div className="flex flex-col gap-stack-md p-6">
+              <p className="font-inter text-body-sm text-on-surface-variant">
+                Payslip <strong>{namaPayslip(manualTarget)}</strong> &middot; periode{" "}
+                {manualTarget.periode} &middot; {formatRupiah(manualTarget.totalFee)}
+              </p>
+              <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-outline-variant p-3">
+                <input
+                  type="radio"
+                  name="manual-opsi"
+                  checked={!manualDibayar}
+                  onChange={() => setManualDibayar(false)}
+                  className="mt-1"
+                />
+                <span className="font-inter text-body-sm text-on-surface-variant">
+                  <strong>Sudah dikirim</strong> ke trainer (manual) &mdash; status jadi
+                  &quot;Menunggu Transfer&quot;.
+                </span>
+              </label>
+              <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-outline-variant p-3">
+                <input
+                  type="radio"
+                  name="manual-opsi"
+                  checked={manualDibayar}
+                  onChange={() => setManualDibayar(true)}
+                  className="mt-1"
+                />
+                <span className="font-inter text-body-sm text-on-surface-variant">
+                  <strong>Sudah dikirim dan sudah dibayar</strong> &mdash; status langsung
+                  &quot;Lunas&quot;.
+                </span>
+              </label>
+              <p className="font-inter text-label-sm text-text-muted">
+                Tercatat di Riwayat Pengiriman sebagai pengiriman manual.
+              </p>
+              {manualError && (
+                <p className="rounded-lg border border-error-container bg-error-container/40 p-3 font-inter text-body-sm text-on-error-container">
+                  {manualError}
+                </p>
+              )}
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setManualTarget(null)}
+                  className="rounded-lg border border-outline-variant px-4 py-2 font-geist text-label-sm text-on-surface-variant transition-colors hover:bg-surface-container"
+                >
+                  Batal
+                </button>
+                <button
+                  type="button"
+                  onClick={konfirmasiManual}
+                  disabled={manualSaving}
+                  className="rounded-lg bg-primary px-5 py-2 font-geist text-label-md text-on-primary transition-colors hover:bg-primary-container disabled:opacity-50"
+                >
+                  {manualSaving ? "Menyimpan..." : "Konfirmasi"}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
