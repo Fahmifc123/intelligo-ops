@@ -14,6 +14,7 @@ type FeeRow = {
   feeBelumDibayar: number;
   sesiBelumDiPayslip: number;
   feeBelumDiPayslip: number;
+  perKelas?: { kelasId: string; kelasNama: string; jumlahSesi: number; totalFee: number }[];
 };
 
 type Sesi = { id: string; kelasId: string; status: string; tanggal: string | null };
@@ -28,8 +29,14 @@ type Kelas = {
   polaPembayaran: "akhir" | "bulanan";
   totalFeeKelas: number;
   feeLunasKelas: number;
-  trainers: { trainerNama: string }[];
+  trainers: { trainerId: string; trainerNama: string; totalFee: number; feeLunas: number }[];
 };
+
+// Kelas dianggap milik trainer kalau dia trainer utama ATAU pernah ngajar
+// sesinya (trainer pengganti) - sebelumnya cuma ngecek trainer utama.
+function kelasMilikTrainer(k: Kelas, trainerId: string): boolean {
+  return k.trainerId === trainerId || (k.trainers ?? []).some((t) => t.trainerId === trainerId);
+}
 
 export default function FeePage() {
   const [rows, setRows] = useState<FeeRow[]>([]);
@@ -92,7 +99,7 @@ export default function FeePage() {
   // langsung, tapi kelasnya iya).
   const kelasTrainerFilter = useMemo(() => {
     if (trainerFilter === "all") return null;
-    return new Set(kelasList.filter((k) => k.trainerId === trainerFilter).map((k) => k.id));
+    return new Set(kelasList.filter((k) => kelasMilikTrainer(k, trainerFilter)).map((k) => k.id));
   }, [kelasList, trainerFilter]);
 
   const sesiBelumTerlaksana = sesiList.filter((s) => {
@@ -104,7 +111,7 @@ export default function FeePage() {
   }).length;
 
   const kelasUntukDropdown =
-    trainerFilter === "all" ? kelasList : kelasList.filter((k) => k.trainerId === trainerFilter);
+    trainerFilter === "all" ? kelasList : kelasList.filter((k) => kelasMilikTrainer(k, trainerFilter));
 
   // Kelas yang masih ada sisa fee belum lunas, dipecah per pola pembayaran -
   // ini yang beda dari tabel utama di bawah (yang rekapnya per TRAINER,
@@ -114,10 +121,16 @@ export default function FeePage() {
   // bulan/tahun - sisa belum lunas itu status kumulatif kelas, bukan
   // kejadian di bulan tertentu.
   const kelasBelumLunas = kelasList
-    .filter((k) => k.totalFeeKelas > k.feeLunasKelas)
-    .filter((k) => trainerFilter === "all" || k.trainerId === trainerFilter)
+    .filter((k) => trainerFilter === "all" || kelasMilikTrainer(k, trainerFilter))
     .filter((k) => kelasFilter === "all" || k.id === kelasFilter)
-    .map((k) => ({ ...k, sisa: k.totalFeeKelas - k.feeLunasKelas }))
+    .map((k) => {
+      // Kalau lagi filter trainer, sisa dihitung dari bagian trainer itu aja.
+      const t = trainerFilter === "all" ? null : k.trainers?.find((x) => x.trainerId === trainerFilter);
+      const total = trainerFilter === "all" ? k.totalFeeKelas : t?.totalFee ?? 0;
+      const lunas = trainerFilter === "all" ? k.feeLunasKelas : t?.feeLunas ?? 0;
+      return { ...k, sisa: total - lunas };
+    })
+    .filter((k) => k.sisa > 0)
     .sort((a, b) => b.sisa - a.sisa);
 
   const kelasBulananBelumLunas = kelasBelumLunas.filter((k) => k.polaPembayaran === "bulanan");
@@ -222,7 +235,10 @@ export default function FeePage() {
               const newTrainerId = e.target.value;
               const stillValid =
                 kelasFilter === "all" ||
-                kelasList.find((k) => k.id === kelasFilter)?.trainerId === newTrainerId ||
+                (() => {
+                  const k = kelasList.find((x) => x.id === kelasFilter);
+                  return !!k && kelasMilikTrainer(k, newTrainerId);
+                })() ||
                 newTrainerId === "all";
               const newKelasFilter = stillValid ? kelasFilter : "all";
               applyFilters(bulanFilter, tahunFilter, newTrainerId, newKelasFilter);
@@ -466,7 +482,23 @@ export default function FeePage() {
                         >
                           {initials(r.trainerNama)}
                         </div>
-                        <div className="font-medium text-primary">{r.trainerNama}</div>
+                        <div>
+                          <div className="font-medium text-primary">{r.trainerNama}</div>
+                          {r.perKelas && r.perKelas.length > 0 && (
+                            <div className="mt-1 flex flex-wrap gap-1">
+                              {r.perKelas.map((pk) => (
+                                <Link
+                                  key={pk.kelasId}
+                                  href={`/kelas/${pk.kelasId}`}
+                                  title={`${pk.jumlahSesi} sesi · ${formatRupiah(pk.totalFee)}`}
+                                  className="rounded-full bg-surface-container-low px-2 py-0.5 text-xs text-text-muted hover:text-primary"
+                                >
+                                  {pk.kelasNama} · {pk.jumlahSesi}
+                                </Link>
+                              ))}
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </td>
                     <td className="p-4 text-on-surface-variant">{r.jumlahSesi} Sesi</td>

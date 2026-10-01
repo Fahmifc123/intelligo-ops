@@ -83,6 +83,7 @@ export async function GET(req: NextRequest) {
     sesiBelumDiPayslip: number;
     feeBelumDiPayslip: number;
     kelasIds: Set<string>;
+    perKelas: Record<string, { kelasId: string; kelasNama: string; jumlahSesi: number; totalFee: number }>;
   };
 
   const rekap: Record<string, Rekap> = {};
@@ -105,12 +106,23 @@ export async function GET(req: NextRequest) {
         sesiBelumDiPayslip: 0,
         feeBelumDiPayslip: 0,
         kelasIds: new Set(),
+        perKelas: {},
       };
     }
     const acc = rekap[tid];
     acc.jumlahSesi += 1;
     acc.totalFee += rate;
-    if (r.kelasId) acc.kelasIds.add(r.kelasId);
+    if (r.kelasId) {
+      acc.kelasIds.add(r.kelasId);
+      const pk = (acc.perKelas[r.kelasId] ??= {
+        kelasId: r.kelasId,
+        kelasNama: r.kelasNama ?? "-",
+        jumlahSesi: 0,
+        totalFee: 0,
+      });
+      pk.jumlahSesi += 1;
+      pk.totalFee += rate;
+    }
 
     if (r.payslipStatus === "lunas") {
       acc.sesiLunas += 1;
@@ -127,6 +139,7 @@ export async function GET(req: NextRequest) {
   const result = Object.values(rekap).map((r) => ({
     ...r,
     kelasIds: Array.from(r.kelasIds),
+    perKelas: Object.values(r.perKelas).sort((a, b) => b.jumlahSesi - a.jumlahSesi),
   }));
 
   return NextResponse.json(result);
