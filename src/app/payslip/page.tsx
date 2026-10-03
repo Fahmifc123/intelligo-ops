@@ -676,7 +676,27 @@ export default function PayslipPage() {
       .sort(([a], [b]) => a.localeCompare(b))
       .slice(-6);
 
-    return { totalBelumDibayar, jumlahBelumDibayar: belumDibayar.length, totalLunas, tunggakanTerlama, perTrainer, tren };
+    // Menunggu transfer = udah terkirim (n8n atau manual) tapi belum
+    // ditandai lunas. Subset dari belumDibayar di atas.
+    const menungguTransfer = periodePayslips.filter((p) => p.status === "terkirim");
+    const totalMenungguTransfer = menungguTransfer.reduce((a, p) => a + p.totalFee, 0);
+    const jadwalTerdekat =
+      menungguTransfer
+        .map((p) => p.jadwalPembayaran)
+        .filter((j): j is string => Boolean(j))
+        .sort()[0] ?? null;
+
+    return {
+      totalBelumDibayar,
+      jumlahBelumDibayar: belumDibayar.length,
+      totalMenungguTransfer,
+      jumlahMenungguTransfer: menungguTransfer.length,
+      jadwalTerdekat,
+      totalLunas,
+      tunggakanTerlama,
+      perTrainer,
+      tren,
+    };
   }, [periodePayslips, payslips, now]);
 
   const inputClass =
@@ -730,16 +750,40 @@ export default function PayslipPage() {
       </div>
 
       {/* Stat tiles */}
-      <div className="grid grid-cols-1 gap-stack-md sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-stack-md sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         <div className="rounded-xl border border-outline-variant bg-surface-container-lowest p-5">
           <p className="font-inter text-label-sm text-text-muted">Belum Dibayar</p>
           <p className="mt-1 font-geist text-headline-md text-warning">
             {formatRupiah(analytics.totalBelumDibayar)}
           </p>
           <p className="mt-1 font-inter text-label-sm text-text-muted">
-            {analytics.jumlahBelumDibayar} payslip
+            {analytics.jumlahBelumDibayar} payslip &middot; termasuk menunggu transfer
           </p>
         </div>
+        <button
+          type="button"
+          onClick={() => setStatusFilter("terkirim")}
+          title="Klik untuk memfilter payslip yang menunggu transfer"
+          className="rounded-xl border border-outline-variant bg-surface-container-lowest p-5 text-left transition-colors hover:bg-surface-container-low"
+        >
+          <p className="font-inter text-label-sm text-text-muted">Menunggu Transfer</p>
+          <p className="mt-1 font-geist text-headline-md text-secondary">
+            {formatRupiah(analytics.totalMenungguTransfer)}
+          </p>
+          <p className="mt-1 font-inter text-label-sm text-text-muted">
+            {analytics.jumlahMenungguTransfer} payslip sudah terkirim
+            {analytics.jadwalTerdekat && (
+              <>
+                {" "}
+                &middot; jadwal terdekat{" "}
+                {(() => {
+                  const [y, m, d] = analytics.jadwalTerdekat.split("-");
+                  return `${d} ${(BULAN_LABEL[m] ?? m).slice(0, 3)} ${y}`;
+                })()}
+              </>
+            )}
+          </p>
+        </button>
         <div className="rounded-xl border border-outline-variant bg-surface-container-lowest p-5">
           <p className="font-inter text-label-sm text-text-muted">Lunas</p>
           <p className="mt-1 font-geist text-headline-md text-success">
